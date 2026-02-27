@@ -27,12 +27,12 @@ export const MODEL_OPTIONS = [
 ];
 
 export const VISUAL_STYLE_OPTIONS = [
-  { label: '🌟 日式动漫', value: 'anime', desc: '日本动漫风格，线条感强' },
-  { label: '🎨 2D动画', value: '2d-animation', desc: '经典卓别林/迪士尼风格' },
-  { label: '👾 3D动画', value: '3d-animation', desc: '皮克斯/梦工厂风格' },
-  { label: '🌌 赛博朋克', value: 'cyberpunk', desc: '高科技赛博朋克风' },
-  { label: '🖼️ 油画风格', value: 'oil-painting', desc: '油画质感艺术风' },
-  { label: '🎬 真人影视', value: 'live-action', desc: '超写实电影/电视剧风格' },
+  { label: '🌟 日式动漫', value: 'anime', desc: '日本动漫风格，线条感强' , previewImage: '/style-previews/anime.png'},
+  { label: '🎨 2D动画', value: '2d-animation', desc: '经典卓别林/迪士尼风格' , previewImage: '/style-previews/2d-animation.png'},
+  { label: '👾 3D动画', value: '3d-animation', desc: '皮克斯/梦工厂风格' , previewImage: '/style-previews/3d-animation.png'},
+  { label: '🌌 赛博朋克', value: 'cyberpunk', desc: '高科技赛博朋克风' , previewImage: '/style-previews/cyberpunk.png'},
+  { label: '🖼️ 油画风格', value: 'oil-painting', desc: '油画质感艺术风' , previewImage: '/style-previews/oil-painting.png'},
+  { label: '🎬 真人影视', value: 'live-action', desc: '超写实电影/电视剧风格' , previewImage: '/style-previews/live-action.png'},
   { label: '✨ 其他 (自定义)', value: 'custom', desc: '手动输入风格' }
 ];
 
