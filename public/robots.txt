@@ -5,8 +5,6 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /node_modules/
-Disallow: /*.json$
-Disallow: /assets/*.js$
 Disallow: /seo-check.html
 
 # Sitemap
