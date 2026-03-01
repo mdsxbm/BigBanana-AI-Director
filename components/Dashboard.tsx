@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Trash2, Loader2, Folder, ChevronRight, Calendar, AlertTriangle, X, HelpCircle, Cpu, Archive, Search, Users, MapPin, Package, Database, Settings, Sun, Moon, Film } from 'lucide-react';
+import { Plus, Trash2, Loader2, Folder, ChevronRight, Calendar, AlertTriangle, X, HelpCircle, Cpu, Archive, Search, Users, MapPin, Package, Database, Settings, Sun, Moon, Film, ExternalLink } from 'lucide-react';
 import { SeriesProject, AssetLibraryItem, Character, Scene, Prop, ProjectState } from '../types';
 import { getAllSeriesProjects, createNewSeriesProject, saveSeriesProject, deleteSeriesProject, createNewSeries, saveSeries, createNewEpisode, saveEpisode, getAllAssetLibraryItems, deleteAssetFromLibrary, exportIndexedDBData } from '../services/storageService';
 import { useAlert } from './GlobalAlert';
@@ -12,6 +12,7 @@ import {
   DEFAULT_BACKUP_TRANSFER_MESSAGES,
   globalBackupFileName,
 } from '../hooks/useBackupTransfer';
+import { DIRECTOR_HUB_URL } from '../constants/links';
 
 interface Props {
   onOpenProject: (project: ProjectState) => void;
@@ -225,6 +226,26 @@ const Dashboard: React.FC<Props> = ({ onOpenProject, onShowOnboarding, onShowMod
             </button>
           </div>
         </header>
+
+        <section className="mb-8 border border-[var(--border-primary)] bg-[var(--bg-primary)] p-5 md:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <h2 className="text-sm md:text-base font-bold text-[var(--text-primary)] tracking-wide">DirectorHub 资源共创平台</h2>
+              <p className="text-xs text-[var(--text-tertiary)] leading-relaxed max-w-3xl">
+                DirectorHub 是一个面向创作者的资源共创平台。在这里你可以上传、下载并分享优质资源，与更多创作者协作成长。我们鼓励原创与高质量内容，对优秀作品提供平台额度补助。
+              </p>
+            </div>
+            <a
+              href={DIRECTOR_HUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 border border-[var(--border-secondary)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors text-xs font-medium tracking-wide whitespace-nowrap"
+            >
+              访问 DirectorHub
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </section>
 
         {isLoading ? (
           <div className="flex justify-center py-20">
