@@ -346,14 +346,11 @@ const StageAssets: React.FC<Props> = ({ project, updateProject, onApiKeyError, o
           shapeReferenceImage = char.shapeReferenceImage;
           if (shapeReferenceImage) {
             characterReferenceImages.push(shapeReferenceImage);
-          } else {
-            if (char.referenceImage) {
-              characterReferenceImages.push(char.referenceImage);
-            }
-            if (char.turnaround?.status === 'completed' && char.turnaround.imageUrl && !characterReferenceImages.includes(char.turnaround.imageUrl)) {
-              characterReferenceImages.push(char.turnaround.imageUrl);
-              characterHasTurnaroundReference = true;
-            }
+          } else if (char.turnaround?.status === 'completed' && char.turnaround.imageUrl && !characterReferenceImages.includes(char.turnaround.imageUrl)) {
+            // Do not implicitly reuse previously generated character image.
+            // Regeneration should follow the current prompt unless user explicitly sets a shape reference.
+            characterReferenceImages.push(char.turnaround.imageUrl);
+            characterHasTurnaroundReference = true;
           }
 
           if (char.visualPrompt) {
