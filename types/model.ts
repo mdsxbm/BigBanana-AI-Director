@@ -486,7 +486,7 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
   {
     id: 'doubao-seedance-1-5-pro',
     apiModel: 'doubao-seedance-1-5-pro',
-    name: 'Doubao Seedance 1.5 Pro (AntSK)',
+    name: 'Doubao Seedance 1.5 Pro (内置)',
     type: 'video',
     providerId: 'antsk',
     endpoint: '/v1/videos',
