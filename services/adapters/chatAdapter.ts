@@ -50,9 +50,15 @@ const retryOperation = async <T>(
  * 清理 JSON 响应
  */
 const cleanJsonResponse = (response: string): string => {
+  if (!response) return '';
   let cleaned = response.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-  cleaned = cleaned.replace(/```\s*$/, '');
+  const fencedMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch) {
+    cleaned = fencedMatch[1];
+  } else {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/```\s*$/, '');
+  }
   return cleaned.trim();
 };
 

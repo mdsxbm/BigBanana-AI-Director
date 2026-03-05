@@ -247,8 +247,13 @@ export const retryOperation = async <T>(
 export const cleanJsonString = (str: string): string => {
   if (!str) return '{}';
   let cleaned = str.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-  cleaned = cleaned.replace(/```\s*$/, '');
+  const fencedMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch) {
+    cleaned = fencedMatch[1];
+  } else {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/```\s*$/, '');
+  }
   return cleaned.trim();
 };
 
@@ -338,7 +343,11 @@ export const chatCompletion = async (
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+    const content = data.choices?.[0]?.message?.content || '';
+    if (responseFormat === 'json_object') {
+      return cleanJsonString(content);
+    }
+    return content;
   } catch (error: any) {
     if (error.name === 'AbortError') {
       if (abortSignal?.aborted) {
@@ -439,6 +448,9 @@ export const chatCompletionStream = async (
 
             if (dataStr === '[DONE]') {
               clearTimeout(timeoutId);
+              if (responseFormat === 'json_object') {
+                return cleanJsonString(fullText);
+              }
               return fullText;
             }
 
@@ -460,6 +472,9 @@ export const chatCompletionStream = async (
     }
 
     clearTimeout(timeoutId);
+    if (responseFormat === 'json_object') {
+      return cleanJsonString(fullText);
+    }
     return fullText;
   } catch (error: any) {
     clearTimeout(timeoutId);
