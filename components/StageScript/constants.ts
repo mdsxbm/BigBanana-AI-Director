@@ -21,7 +21,7 @@ export const LANGUAGE_OPTIONS = [
 export const MODEL_OPTIONS = [
   { label: 'GPT-5.2 (推荐)', value: 'gpt-5.2' },
   { label: 'GPT-5.1', value: 'gpt-5.1' },
-  { label: 'GPT-4.1', value: 'gpt-41' },
+  { label: 'GPT-5.4', value: 'gpt-5.4' },
   { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
   { label: 'Claude Opus 4.6', value: 'claude-opus-4-6-20260205' },
   { label: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5-20250929' },

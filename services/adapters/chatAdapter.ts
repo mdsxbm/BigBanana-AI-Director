@@ -5,6 +5,7 @@
 
 import { ChatModelDefinition, ChatOptions, ChatModelParams } from '../../types/model';
 import { getApiKeyForModel, getApiBaseUrlForModel, getActiveChatModel } from '../modelRegistry';
+import { DEFAULT_CHAT_VERIFY_MODEL } from '../modelIdUtils';
 
 /**
  * API Key 错误类
@@ -192,7 +193,7 @@ export const verifyApiKey = async (apiKey: string, baseUrl?: string): Promise<{ 
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-41',
+        model: DEFAULT_CHAT_VERIFY_MODEL,
         messages: [{ role: 'user', content: '仅返回1' }],
         temperature: 0.1,
         max_tokens: 5,

@@ -13,6 +13,7 @@ import {
   ImageModelConfig,
   VideoModelConfig
 } from '../types';
+import { normalizeChatModelId } from './modelIdUtils';
 
 // localStorage 键名
 const STORAGE_KEY = 'bigbanana_model_config';
@@ -69,10 +70,19 @@ export const loadModelConfig = (): ModelManagerState => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as ModelManagerState;
+      let shouldPersistMigration = false;
       // 确保默认提供商始终存在
       const hasDefaultProvider = parsed.providers.some(p => p.id === 'antsk');
       if (!hasDefaultProvider) {
         parsed.providers.unshift(DEFAULT_PROVIDER);
+        shouldPersistMigration = true;
+      }
+
+      const currentChatModelName = parsed.currentConfig?.chatModel?.modelName;
+      const normalizedChatModelName = normalizeChatModelId(currentChatModelName);
+      if (currentChatModelName && normalizedChatModelName !== currentChatModelName) {
+        parsed.currentConfig.chatModel.modelName = normalizedChatModelName!;
+        shouldPersistMigration = true;
       }
       // 迁移旧的 Veo 同步模型名到 Veo Fast（异步）
       const videoModelName = parsed.currentConfig?.videoModel?.modelName || '';
@@ -87,7 +97,10 @@ export const loadModelConfig = (): ModelManagerState => {
         parsed.currentConfig.videoModel.modelName = 'veo_3_1-fast';
         parsed.currentConfig.videoModel.type = 'sora';
         parsed.currentConfig.videoModel.endpoint = '/v1/videos';
-        // 迁移后立即回写，避免重复执行
+        shouldPersistMigration = true;
+      }
+
+      if (shouldPersistMigration) {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed)); } catch (e) { /* ignore */ }
       }
       runtimeState = parsed;
@@ -389,7 +402,7 @@ export const resetToDefault = (): void => {
 export const AVAILABLE_CHAT_MODELS = [
   { name: 'GPT-5.2', value: 'gpt-5.2', description: '综合能力最强，适合复杂任务' },
   { name: 'GPT-5.1', value: 'gpt-5.1', description: '旗舰通用模型，稳定可靠' },
-  { name: 'GPT-4.1', value: 'gpt-41', description: '高性价比，适合长文本处理' },
+  { name: 'GPT-5.4', value: 'gpt-5.4', description: '高性价比，适合长文本处理' },
   { name: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6', description: '速度与智能平衡，代码/Agent 友好' },
   { name: 'Claude Opus 4.6', value: 'claude-opus-4-6-20260205', description: '复杂推理与高难任务优先' },
   { name: 'Claude Sonnet 4.5', value: 'claude-sonnet-4-5-20250929', description: '均衡稳定，适合高频文本任务' },

@@ -22,6 +22,7 @@ import {
   getActiveAudioModel,
 } from '../modelRegistry';
 import { fetchMediaWithCorsFallback } from '../mediaFetchService';
+import { DEFAULT_CHAT_VERIFY_MODEL, normalizeChatModelId } from '../modelIdUtils';
 
 // ============================================
 // Script progress callback
@@ -73,8 +74,9 @@ const DEFAULT_API_BASE = 'https://api.antsk.cn';
 export const resolveModel = (type: 'chat' | 'image' | 'video' | 'audio', modelId?: string) => {
   if (modelId) {
     const normalizedModelId = modelId.toLowerCase();
+    const compatModelId = type === 'chat' ? (normalizeChatModelId(modelId) || modelId) : modelId;
     // Keep alias compatibility for model registry lookup.
-    const lookupId = normalizedModelId === 'veo_3_1-fast-4k' ? 'veo_3_1-fast' : modelId;
+    const lookupId = normalizedModelId === 'veo_3_1-fast-4k' ? 'veo_3_1-fast' : compatModelId;
     const model = getModelById(lookupId);
     if (model && model.type === type) return model;
 
@@ -92,8 +94,9 @@ export const resolveRequestModel = (type: 'chat' | 'image' | 'video' | 'audio', 
     return modelId;
   }
 
-  const resolved = resolveModel(type, modelId);
-  return resolved?.apiModel || resolved?.id || modelId || '';
+  const compatModelId = type === 'chat' ? normalizeChatModelId(modelId) : modelId;
+  const resolved = resolveModel(type, compatModelId);
+  return resolved?.apiModel || resolved?.id || compatModelId || '';
 };
 
 /**
@@ -507,7 +510,7 @@ export const verifyApiKey = async (key: string): Promise<{ success: boolean; mes
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: 'gpt-41',
+        model: DEFAULT_CHAT_VERIFY_MODEL,
         messages: [{ role: 'user', content: 'Return 1 only.' }],
         temperature: 0.1,
         max_tokens: 5,

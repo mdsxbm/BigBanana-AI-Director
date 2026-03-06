@@ -19,6 +19,7 @@ import {
   AspectRatio,
   VideoDuration,
 } from '../types/model';
+import { normalizeChatModelId } from './modelIdUtils';
 
 // localStorage 键名
 const STORAGE_KEY = 'bigbanana_model_registry';
@@ -73,6 +74,33 @@ export const loadRegistry = (): ModelRegistryState => {
         ...DEFAULT_ACTIVE_MODELS,
         ...(parsed.activeModels || {}),
       };
+
+      let chatModelAliasMigrated = false;
+      const hasBuiltinGpt54 = parsed.models.some(m => m.type === 'chat' && m.id === 'gpt-5.4');
+      parsed.models = parsed.models.flatMap((model) => {
+        if (!(model.type === 'chat' && model.id === 'gpt-41')) {
+          return [model];
+        }
+
+        chatModelAliasMigrated = true;
+
+        if (hasBuiltinGpt54) {
+          return [];
+        }
+
+        return [{
+          ...model,
+          id: 'gpt-5.4',
+          name: 'GPT-5.4',
+          apiModel: 'gpt-5.4',
+        }];
+      });
+
+      const normalizedActiveChatModel = normalizeChatModelId(parsed.activeModels.chat);
+      if (normalizedActiveChatModel && normalizedActiveChatModel !== parsed.activeModels.chat) {
+        parsed.activeModels.chat = normalizedActiveChatModel;
+        chatModelAliasMigrated = true;
+      }
       
       // 确保内置模型和提供商始终存在
       const builtInProviderIds = BUILTIN_PROVIDERS.map(p => p.id);
@@ -223,7 +251,7 @@ export const loadRegistry = (): ModelRegistryState => {
       registryState = parsed;
 
       // 如果发生了迁移，立即回写 localStorage，避免每次加载都重复执行
-      if (modelsRemoved > 0 || activeModelMigrated || modelsReordered) {
+      if (modelsRemoved > 0 || activeModelMigrated || modelsReordered || chatModelAliasMigrated) {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
           console.log(`🔄 模型注册中心迁移完成：清理 ${modelsRemoved} 个废弃模型`);

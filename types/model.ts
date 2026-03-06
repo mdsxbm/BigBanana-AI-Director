@@ -354,8 +354,8 @@ export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
   },
  
   {
-    id: 'gpt-41',
-    name: 'GPT-4.1',
+    id: 'gpt-5.4',
+    name: 'GPT-5.4',
     type: 'chat',
     providerId: 'antsk',
     description: '高性价比稳健模型：指令遵循与代码能力强，支持超长上下文，适合规模化文本处理',

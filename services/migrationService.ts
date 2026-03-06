@@ -1,4 +1,5 @@
 import { SeriesProject, Series, Episode, Character } from '../types';
+import { normalizeChatModelId } from './modelIdUtils';
 
 const generateId = (prefix: string): string => {
   const rand = Math.random().toString(36).slice(2, 6);
@@ -148,7 +149,7 @@ export async function runV2ToV3Migration(db: IDBDatabase): Promise<void> {
         targetDuration: legacy.targetDuration,
         language: legacy.language,
         visualStyle: legacy.visualStyle,
-        shotGenerationModel: legacy.shotGenerationModel,
+        shotGenerationModel: normalizeChatModelId(legacy.shotGenerationModel) || 'gpt-5.2',
         scriptData: legacy.scriptData ? { ...legacy.scriptData, characters: episodeChars, scenes: episodeScenes, props: episodeProps } : null,
         shots: legacy.shots || [],
         isParsingScript: false,

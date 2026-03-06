@@ -365,7 +365,7 @@ export interface RenderLog {
   resourceId: string; // ID of the resource being generated
   resourceName: string; // Human-readable name
   status: 'success' | 'failed';
-  model: string; // Model used (e.g., 'imagen-3', 'veo_3_1_i2v_s_fast_fl_landscape', 'gpt-41')
+  model: string; // Model used (e.g., 'imagen-3', 'veo_3_1_i2v_s_fast_fl_landscape', 'gpt-5.4')
   prompt?: string; // The prompt used (optional, for debugging)
   error?: string; // Error message if failed
   inputTokens?: number; // Input tokens consumed
@@ -492,7 +492,7 @@ export interface ModelProvider {
  */
 export interface ChatModelConfig {
   providerId: string;
-  modelName: string;  // 如 'gpt-5.1', 'gpt-41', 'gpt-5.2'
+  modelName: string;  // 如 'gpt-5.1', 'gpt-5.2', 'gpt-5.4'
   endpoint?: string;  // API 端点，默认为 '/v1/chat/completions'
 }
 
