@@ -173,6 +173,65 @@ const sanitizeStylePrompt = (raw: string): string => {
   return value || fallback;
 };
 
+type ConcurrentBatchOptions = {
+  concurrency: number;
+  batchGapMs?: number;
+  taskStaggerMs?: number;
+  wait: (ms: number) => Promise<void>;
+  beforeEachBatch?: () => void;
+  beforeEachTask?: () => void;
+};
+
+const executeInConcurrentBatches = async <T, R>(
+  items: T[],
+  worker: (item: T, index: number) => Promise<R>,
+  options: ConcurrentBatchOptions
+): Promise<R[]> => {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const concurrency = Math.max(1, options.concurrency || 1);
+  const batchGapMs = Math.max(0, options.batchGapMs || 0);
+  const taskStaggerMs = Math.max(0, options.taskStaggerMs || 0);
+  const results = new Array<R>(items.length);
+
+  for (let start = 0; start < items.length; start += concurrency) {
+    options.beforeEachBatch?.();
+
+    if (start > 0 && batchGapMs > 0) {
+      await options.wait(batchGapMs);
+    }
+
+    const batch = items.slice(start, start + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async (item, batchIndex) => {
+        options.beforeEachTask?.();
+
+        if (batchIndex > 0 && taskStaggerMs > 0) {
+          await options.wait(taskStaggerMs * batchIndex);
+          options.beforeEachTask?.();
+        }
+
+        return worker(item, start + batchIndex);
+      })
+    );
+
+    batchResults.forEach((result, offset) => {
+      results[start + offset] = result;
+    });
+  }
+
+  return results;
+};
+
+const VISUAL_PROMPT_CONCURRENCY = 3;
+const VISUAL_PROMPT_BATCH_GAP_MS = 350;
+const VISUAL_PROMPT_TASK_STAGGER_MS = 150;
+const SHOT_SCENE_CONCURRENCY = 2;
+const SHOT_SCENE_BATCH_GAP_MS = 450;
+const SHOT_SCENE_TASK_STAGGER_MS = 200;
+
 export interface VisualStyleInferenceResult {
   stylePrompt: string;
   styleKeySuggestion?: PresetVisualStyleKey | 'custom';
@@ -639,87 +698,128 @@ export const enrichScriptDataVisuals = async (
     }
   }
 
-  for (const idx of missingCharacterIndexes) {
-    ensureNotAborted();
-    if (characters[idx].visualPrompt) continue;
-    try {
-      if (idx > 0) await wait(1200);
-      console.log(`  生成角色提示词: ${characters[idx].name}`);
-      logScriptProgress(`生成角色视觉提示词：${characters[idx].name}`);
-      const prompts = await generateVisualPrompts(
-        'character',
-        characters[idx],
-        genre,
-        model,
-        nextData.visualStyle || '3d-animation',
-        nextData.language || language,
-        artDirection,
-        abortSignal
-      );
-      characters[idx].visualPrompt = prompts.visualPrompt;
-      characters[idx].negativePrompt = prompts.negativePrompt;
-    } catch (e) {
-      console.error(`Failed to generate visual prompt for character ${characters[idx].name}:`, e);
-    }
-  }
-
   const sceneIndexes = scenes
     .map((scene, idx) => ({ idx, missing: !scene.visualPrompt }))
     .filter(entry => (onlyMissing ? entry.missing : true))
     .map(entry => entry.idx);
-
-  for (const idx of sceneIndexes) {
-    ensureNotAborted();
-    try {
-      await wait(1200);
-      console.log(`  生成场景提示词: ${scenes[idx].location}`);
-      logScriptProgress(`生成场景视觉提示词：${scenes[idx].location}`);
-      const prompts = await generateVisualPrompts(
-        'scene',
-        scenes[idx],
-        genre,
-        model,
-        nextData.visualStyle || '3d-animation',
-        nextData.language || language,
-        artDirection,
-        abortSignal
-      );
-      scenes[idx].visualPrompt = prompts.visualPrompt;
-      scenes[idx].negativePrompt = prompts.negativePrompt;
-    } catch (e) {
-      console.error(`Failed to generate visual prompt for scene ${scenes[idx].location}:`, e);
-    }
-  }
 
   const propIndexes = props
     .map((prop, idx) => ({ idx, missing: !prop.visualPrompt }))
     .filter(entry => (onlyMissing ? entry.missing : true))
     .map(entry => entry.idx);
 
-  for (const idx of propIndexes) {
-    ensureNotAborted();
-    try {
-      await wait(1000);
-      console.log(`  生成道具提示词: ${props[idx].name}`);
-      logScriptProgress(`生成道具视觉提示词：${props[idx].name}`);
-      const prompts = await generateVisualPrompts(
-        'prop',
-        props[idx],
-        genre,
-        model,
-        nextData.visualStyle || '3d-animation',
-        nextData.language || language,
-        artDirection,
-        abortSignal
-      );
-      props[idx].visualPrompt = prompts.visualPrompt;
-      props[idx].negativePrompt = prompts.negativePrompt;
-    } catch (e) {
-      console.error(`Failed to generate visual prompt for prop ${props[idx].name}:`, e);
-    }
+  type VisualPromptTask = {
+    label: string;
+    generate: () => Promise<{ visualPrompt: string; negativePrompt: string }>;
+    apply: (result: { visualPrompt: string; negativePrompt: string }) => void;
+    onError: (error: unknown) => void;
+  };
+
+  const visualTasks: VisualPromptTask[] = [];
+
+  for (const idx of missingCharacterIndexes) {
+    if (characters[idx].visualPrompt) continue;
+    visualTasks.push({
+      label: `角色：${characters[idx].name}`,
+      generate: () =>
+        generateVisualPrompts(
+          'character',
+          characters[idx],
+          genre,
+          model,
+          nextData.visualStyle || '3d-animation',
+          nextData.language || language,
+          artDirection,
+          abortSignal
+        ),
+      apply: (prompts) => {
+        characters[idx].visualPrompt = prompts.visualPrompt;
+        characters[idx].negativePrompt = prompts.negativePrompt;
+      },
+      onError: (error) => {
+        console.error(`Failed to generate visual prompt for character ${characters[idx].name}:`, error);
+      }
+    });
   }
 
-  console.log("✅ 视觉提示词生成完成！");
+  for (const idx of sceneIndexes) {
+    visualTasks.push({
+      label: `场景：${scenes[idx].location}`,
+      generate: () =>
+        generateVisualPrompts(
+          'scene',
+          scenes[idx],
+          genre,
+          model,
+          nextData.visualStyle || '3d-animation',
+          nextData.language || language,
+          artDirection,
+          abortSignal
+        ),
+      apply: (prompts) => {
+        scenes[idx].visualPrompt = prompts.visualPrompt;
+        scenes[idx].negativePrompt = prompts.negativePrompt;
+      },
+      onError: (error) => {
+        console.error(`Failed to generate visual prompt for scene ${scenes[idx].location}:`, error);
+      }
+    });
+  }
+
+  for (const idx of propIndexes) {
+    visualTasks.push({
+      label: `道具：${props[idx].name}`,
+      generate: () =>
+        generateVisualPrompts(
+          'prop',
+          props[idx],
+          genre,
+          model,
+          nextData.visualStyle || '3d-animation',
+          nextData.language || language,
+          artDirection,
+          abortSignal
+        ),
+      apply: (prompts) => {
+        props[idx].visualPrompt = prompts.visualPrompt;
+        props[idx].negativePrompt = prompts.negativePrompt;
+      },
+      onError: (error) => {
+        console.error(`Failed to generate visual prompt for prop ${props[idx].name}:`, error);
+      }
+    });
+  }
+
+  if (visualTasks.length > 0) {
+    const concurrency = Math.min(VISUAL_PROMPT_CONCURRENCY, Math.max(1, visualTasks.length));
+    logScriptProgress(`检测到 ${visualTasks.length} 个独立视觉提示词任务，已启用并发生成（并发 ${concurrency}）...`);
+
+    await executeInConcurrentBatches(
+      visualTasks,
+      async (task) => {
+        ensureNotAborted();
+        console.log(`  Generating visual prompt: ${task.label}`);
+        logScriptProgress(`生成视觉提示词：${task.label}`);
+
+        try {
+          const prompts = await task.generate();
+          task.apply(prompts);
+        } catch (error) {
+          task.onError(error);
+        }
+      },
+      {
+        concurrency,
+        batchGapMs: VISUAL_PROMPT_BATCH_GAP_MS,
+        taskStaggerMs: VISUAL_PROMPT_TASK_STAGGER_MS,
+        wait,
+        beforeEachBatch: ensureNotAborted,
+        beforeEachTask: ensureNotAborted,
+      }
+    );
+  }
+
+  console.log('✅ 视觉提示词生成完成！');
   logScriptProgress('视觉提示词生成完成');
   return nextData;
 };
@@ -1282,6 +1382,49 @@ export const generateShotList = async (
   const baseShotsPerScene = Math.floor(totalShotsNeeded / scenesCount);
   const extraShots = totalShotsNeeded % scenesCount;
   const sceneShotPlan = scriptData.scenes.map((_, idx) => baseShotsPerScene + (idx < extraShots ? 1 : 0));
+  const sceneShotRanges = sceneShotPlan.map((count, idx) => {
+    const start = sceneShotPlan.slice(0, idx).reduce((sum, value) => sum + value, 0) + 1;
+    const end = start + Math.max(0, count) - 1;
+    return { start, end, count: Math.max(0, count) };
+  });
+
+  const getSceneNameForLog = (scene: Scene, index: number): string => {
+    const location = String(scene.location || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return location || `场景${index + 1}`;
+  };
+
+  const getShotRangeLabelForLog = (sceneIndex: number): string => {
+    const range = sceneShotRanges[sceneIndex];
+    if (!range || range.count <= 0) {
+      return `分镜 0/${totalShotsNeeded}`;
+    }
+    if (range.count === 1) {
+      return `分镜 ${range.start}/${totalShotsNeeded}`;
+    }
+    return `分镜 ${range.start}-${range.end}/${totalShotsNeeded}`;
+  };
+
+  const getSceneProgressLabel = (scene: Scene, sceneIndex: number): string => {
+    return `${getShotRangeLabelForLog(sceneIndex)}（场景 ${sceneIndex + 1}：${getSceneNameForLog(scene, sceneIndex)}）`;
+  };
+
+  let completedShotCount = 0;
+  const logShotSceneCompletion = (
+    scene: Scene,
+    sceneIndex: number,
+    producedShots: number,
+    mode: 'generated' | 'reused' | 'fallback'
+  ) => {
+    completedShotCount = Math.min(totalShotsNeeded, completedShotCount + Math.max(0, producedShots));
+    const modeLabel = mode === 'reused'
+      ? '复用完成'
+      : mode === 'fallback'
+        ? '兜底补齐完成'
+        : '生成完成';
+    logScriptProgress(`${modeLabel}：${getSceneProgressLabel(scene, sceneIndex)}，当前进度 ${completedShotCount}/${totalShotsNeeded}`);
+  };
 
   const validCharacterIds = new Set((scriptData.characters || []).map(c => String(c.id)));
   const validPropIds = new Set((scriptData.props || []).map(p => String(p.id)));
@@ -1501,6 +1644,7 @@ export const generateShotList = async (
     const shotsPerScene = sceneShotPlan[index] || 1;
     const actionSource = resolveSceneActionText(scene, index);
     const paragraphs = actionSource.text;
+    const sceneProgressLabel = getSceneProgressLabel(scene, index);
 
     if (shouldReuseUnchangedScenes && reusableSceneBuckets.size > 0) {
       const signature = buildSceneReuseSignature({
@@ -1522,6 +1666,8 @@ export const generateShotList = async (
           props: remapIds(shot.props, propIdRemap, validPropIds),
           keyframes: normalizeShotKeyframes(shot, index, visualStyle)
         }));
+        logScriptProgress(`复用分镜：${sceneProgressLabel}`);
+        logShotSceneCompletion(scene, index, remapped.length, 'reused');
         logScriptProgress(`场景「${scene.location}」命中增量复用，跳过AI分镜生成（复用 ${remapped.length} 条）`);
         return remapped;
       }
@@ -1529,11 +1675,14 @@ export const generateShotList = async (
 
     if (!paragraphs.trim()) {
       console.warn(`⚠️ 场景 ${index + 1} 缺少可用段落，使用兜底分镜填充 ${shotsPerScene} 条`);
-      return createFallbackShotsForScene(
+      logScriptProgress(`剧情内容不足，改用兜底分镜：${sceneProgressLabel}`);
+      const fallbackShots = createFallbackShotsForScene(
         scene,
         shotsPerScene,
         `${scene.location} ${scene.time} ${scene.atmosphere}`.trim()
       );
+      logShotSceneCompletion(scene, index, fallbackShots.length, 'fallback');
+      return fallbackShots;
     }
 
     if (actionSource.source !== 'direct') {
@@ -1584,6 +1733,7 @@ export const generateShotList = async (
     let responseText = '';
     try {
       console.log(`  📡 场景 ${index + 1} API调用 - 模型:`, model);
+      logScriptProgress(`开始生成分镜：${sceneProgressLabel}`);
       ensureNotAborted();
       responseText = await retryOperation(
         () => chatCompletion(prompt, model, 0.5, 8192, 'json_object', 600000, abortSignal),
@@ -1601,6 +1751,7 @@ export const generateShotList = async (
 
       if (validShots.length !== shotsPerScene) {
         console.warn(`⚠️ 场景 ${index + 1} 返回分镜数量不符：期望 ${shotsPerScene}，实际 ${validShots.length}，尝试自动纠偏...`);
+        logScriptProgress(`分镜数量校正中：${sceneProgressLabel}（期望 ${shotsPerScene}，返回 ${validShots.length}）`);
         const shotRepairTemplate = withTemplateFallback(
           promptTemplates.storyboard.shotRepair,
           DEFAULT_PROMPT_TEMPLATE_CONFIG.storyboard.shotRepair
@@ -1688,6 +1839,7 @@ export const generateShotList = async (
         duration: Date.now() - sceneStartTime
       });
 
+      logShotSceneCompletion(scene, index, result.length, 'generated');
       return result;
     } catch (e: any) {
       console.error(`Failed to generate shots for scene ${scene.id}`, e);
@@ -1708,24 +1860,31 @@ export const generateShotList = async (
         duration: Date.now() - sceneStartTime
       });
 
-      return createFallbackShotsForScene(scene, shotsPerScene, paragraphs);
+      const fallbackShots = createFallbackShotsForScene(scene, shotsPerScene, paragraphs);
+      logScriptProgress(`分镜生成失败，改用兜底结果：${sceneProgressLabel}`);
+      logShotSceneCompletion(scene, index, fallbackShots.length, 'fallback');
+      return fallbackShots;
     }
   };
 
-  // Process scenes sequentially
-  const BATCH_SIZE = 1;
-  const allShots: Shot[] = [];
-
-  for (let i = 0; i < scriptData.scenes.length; i += BATCH_SIZE) {
-    ensureNotAborted();
-    if (i > 0) await wait(1200);
-
-    const batch = scriptData.scenes.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map((scene, idx) => processScene(scene, i + idx))
-    );
-    batchResults.forEach(shots => allShots.push(...shots));
+  const sceneConcurrency = Math.min(SHOT_SCENE_CONCURRENCY, Math.max(1, scriptData.scenes.length));
+  if (scriptData.scenes.length > 1) {
+    logScriptProgress(`检测到 ${scriptData.scenes.length} 个场景，预计生成 ${totalShotsNeeded} 个分镜，已启用并发 ${sceneConcurrency}`);
   }
+
+  const sceneResults = await executeInConcurrentBatches(
+    scriptData.scenes,
+    (scene, index) => processScene(scene, index),
+    {
+      concurrency: sceneConcurrency,
+      batchGapMs: SHOT_SCENE_BATCH_GAP_MS,
+      taskStaggerMs: SHOT_SCENE_TASK_STAGGER_MS,
+      wait,
+      beforeEachBatch: ensureNotAborted,
+      beforeEachTask: ensureNotAborted,
+    }
+  );
+  const allShots = sceneResults.flat();
 
   if (allShots.length === 0) {
     throw new Error('分镜生成失败：AI返回为空（可能是 JSON 结构不匹配或场景内容未被识别）。请打开控制台查看分镜生成日志。');
