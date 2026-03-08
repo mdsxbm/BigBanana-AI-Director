@@ -2,7 +2,7 @@ import React from 'react';
 import { Activity, CreditCard, Key, Loader2, RefreshCcw } from 'lucide-react';
 import { NewApiSession, NewApiStatus } from '../../services/newApiService';
 import { AccountTab } from './types';
-import { formatQuota } from './utils';
+import { formatQuotaInUsd } from './utils';
 import { SectionCard, StatCard } from './ui';
 
 interface OverviewPanelProps {
@@ -39,8 +39,8 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({
         )}
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="当前余额" value={formatQuota(user?.quota, status)} valueClassName="break-all" hint="用于当前账号可消费额度" />
-          <StatCard label="累计消耗" value={formatQuota(user?.used_quota, status)} valueClassName="break-all" hint="便于快速判断最近使用情况" />
+          <StatCard label="当前余额" value={formatQuotaInUsd(user?.quota, status)} valueClassName="break-all" hint="用于当前账号可消费额度" />
+          <StatCard label="累计消耗" value={formatQuotaInUsd(user?.used_quota, status)} valueClassName="break-all" hint="便于快速判断最近使用情况" />
           <StatCard label="请求次数" value={user?.request_count ?? 0} hint="来自当前账号累计调用记录" />
           <StatCard label="用户组" value={user?.group || '默认分组'} valueClassName="break-words" hint="决定当前账号可用的资源池与权限范围" />
         </div>

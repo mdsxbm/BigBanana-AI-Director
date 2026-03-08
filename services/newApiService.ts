@@ -211,6 +211,29 @@ export interface NewApiLogStats {
   tpm: number;
 }
 
+export interface NewApiTask {
+  id: number;
+  created_at: number;
+  updated_at: number;
+  task_id: string;
+  platform: string;
+  user_id: number;
+  group?: string;
+  channel_id?: number;
+  quota?: number;
+  action?: string;
+  status?: string;
+  fail_reason?: string;
+  result_url?: string;
+  submit_time?: number;
+  start_time?: number;
+  finish_time?: number;
+  progress?: string;
+  properties?: unknown;
+  username?: string;
+  data?: unknown;
+}
+
 interface NewApiEnvelope<T> {
   success: boolean;
   message: string;
@@ -233,6 +256,18 @@ export interface NewApiLogsQuery {
   modelName?: string;
   group?: string;
   requestId?: string;
+  startTimestamp?: number;
+  endTimestamp?: number;
+}
+
+export interface NewApiTasksQuery {
+  page?: number;
+  pageSize?: number;
+  channelId?: number | string;
+  taskId?: string;
+  platform?: string;
+  status?: string;
+  action?: string;
   startTimestamp?: number;
   endTimestamp?: number;
 }
@@ -521,6 +556,21 @@ export const getNewApiLogsStat = async (query: Omit<NewApiLogsQuery, 'page' | 'p
     token_name: query.tokenName,
     model_name: query.modelName,
     group: query.group,
+    start_timestamp: query.startTimestamp,
+    end_timestamp: query.endTimestamp,
+  })}`);
+  return unwrapEnvelope(payload);
+};
+
+export const getNewApiTasks = async (query: NewApiTasksQuery): Promise<NewApiPage<NewApiTask>> => {
+  const payload = await proxyFetch<NewApiEnvelope<NewApiPage<NewApiTask>>>(`/api/new-api/tasks${buildQueryString({
+    p: query.page ?? 1,
+    page_size: query.pageSize ?? 20,
+    channel_id: query.channelId,
+    task_id: query.taskId,
+    platform: query.platform,
+    status: query.status,
+    action: query.action,
     start_timestamp: query.startTimestamp,
     end_timestamp: query.endTimestamp,
   })}`);

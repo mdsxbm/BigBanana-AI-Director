@@ -9,7 +9,7 @@ import {
   NewApiSubscriptionSummary,
   NewApiTopupInfo,
 } from '../../services/newApiService';
-import { formatPayableAmount, formatQuota, getQuotaPerUnit } from './utils';
+import { formatPayableAmount, formatQuotaInUsd, getQuotaPerUnit } from './utils';
 import { EmptyState, SectionCard, StatCard } from './ui';
 
 interface BillingPanelProps {
@@ -318,8 +318,8 @@ export const BillingPanel: React.FC<BillingPanelProps> = ({
         )}
       >
         <div className="grid gap-4 md:grid-cols-3">
-          <StatCard label="当前余额" value={formatQuota(session.user?.quota, status)} hint="支付完成后可在这里立即确认到账" />
-          <StatCard label="累计消耗" value={formatQuota(session.user?.used_quota, status)} hint="帮助你判断近期使用强度" />
+          <StatCard label="当前余额" value={formatQuotaInUsd(session.user?.quota, status)} hint="支付完成后可在这里立即确认到账" />
+          <StatCard label="累计消耗" value={formatQuotaInUsd(session.user?.used_quota, status)} hint="帮助你判断近期使用强度" />
           <StatCard label="支付方式" value={paymentMethodTypes.size || 0} hint={topupInfoLoading || subscriptionLoading ? '正在同步支付渠道' : '当前可选支付渠道数量'} />
         </div>
       </SectionCard>

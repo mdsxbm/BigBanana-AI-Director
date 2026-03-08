@@ -10,6 +10,7 @@ import {
   NewApiSubscriptionSelf,
   NewApiStatus,
   NewApiSubscriptionPlanItem,
+  NewApiTask,
   NewApiToken,
   NewApiTopupInfo,
   bootstrapNewApiSession,
@@ -24,6 +25,7 @@ import {
   getNewApiSelf,
   getNewApiSubscriptionPlans,
   getNewApiSubscriptionSelf,
+  getNewApiTasks,
   getNewApiTokens,
   getNewApiTopupInfo,
   loginNewApiUser,
@@ -44,11 +46,11 @@ import { BillingPanel } from './account-center/BillingPanel';
 import { AuthTab } from './account-center/internal';
 import { LogsPanel } from './account-center/LogsPanel';
 import { OverviewPanel } from './account-center/OverviewPanel';
-import { AccountTab, LoginFormState, RegisterFormState, TokenFormState } from './account-center/types';
+import { AccountTab, LoginFormState, LogView, RegisterFormState, TokenFormState } from './account-center/types';
 import {
   creditsToQuota,
   formatDateTimeInput,
-  formatQuota,
+  formatQuotaInUsd,
   normalizePayMethods,
   submitPaymentForm,
   toUnixTimestamp,
@@ -115,6 +117,7 @@ const NewApiConsole: React.FC = () => {
 
   const defaultStart = useMemo(() => formatDateTimeInput(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)), []);
   const defaultEnd = useMemo(() => formatDateTimeInput(new Date()), []);
+  const [logView, setLogView] = useState<LogView>('usage');
   const [logType, setLogType] = useState(2);
   const [logStart, setLogStart] = useState(defaultStart);
   const [logEnd, setLogEnd] = useState(defaultEnd);
@@ -127,11 +130,22 @@ const NewApiConsole: React.FC = () => {
   const [logPageSize] = useState(20);
   const [logTotal, setLogTotal] = useState(0);
   const [logStats, setLogStats] = useState<NewApiLogStats | null>(null);
+  const [taskStart, setTaskStart] = useState(defaultStart);
+  const [taskEnd, setTaskEnd] = useState(defaultEnd);
+  const [taskTaskId, setTaskTaskId] = useState('');
+  const [taskStatus, setTaskStatus] = useState('');
+  const [taskPlatform, setTaskPlatform] = useState('');
+  const [tasks, setTasks] = useState<NewApiTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskPageSize] = useState(20);
+  const [taskTotal, setTaskTotal] = useState(0);
 
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [topupLoaded, setTopupLoaded] = useState(false);
   const [tokensLoaded, setTokensLoaded] = useState(false);
   const [logsLoaded, setLogsLoaded] = useState(false);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const estimateRequestIdRef = useRef(0);
 
   const sessionUserId = session?.userId ?? null;
@@ -160,11 +174,16 @@ const NewApiConsole: React.FC = () => {
     setLogPage(1);
     setLogTotal(0);
     setLogStats(null);
+    setLogView('usage');
     setLogChannelId('');
+    setTasks([]);
+    setTaskPage(1);
+    setTaskTotal(0);
     setProfileLoaded(false);
     setTopupLoaded(false);
     setTokensLoaded(false);
     setLogsLoaded(false);
+    setTasksLoaded(false);
     setActiveTab('overview');
   }, []);
 
@@ -288,6 +307,32 @@ const NewApiConsole: React.FC = () => {
     }
   }, [logChannelId, logEnd, logModelName, logPageSize, logStart, logTokenName, logType, showAlert]);
 
+  const loadTasks = useCallback(async (page = 1) => {
+    setTasksLoading(true);
+    try {
+      const startTimestamp = toUnixTimestamp(taskStart);
+      const endTimestamp = toUnixTimestamp(taskEnd);
+      const pageData = await getNewApiTasks({
+        page,
+        pageSize: taskPageSize,
+        taskId: taskTaskId,
+        platform: taskPlatform,
+        status: taskStatus,
+        startTimestamp,
+        endTimestamp,
+      });
+      setTasks(pageData.items || []);
+      setTaskPage(pageData.page || page);
+      setTaskTotal(pageData.total || 0);
+      setTasksLoaded(true);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : '获取任务日志失败', { type: 'error' });
+      throw error;
+    } finally {
+      setTasksLoading(false);
+    }
+  }, [showAlert, taskEnd, taskPageSize, taskPlatform, taskStart, taskStatus, taskTaskId]);
+
   useEffect(() => {
     loadStatusAndSession(activeEndpoint, true).catch(() => undefined);
   }, [activeEndpoint, loadStatusAndSession]);
@@ -309,10 +354,14 @@ const NewApiConsole: React.FC = () => {
       loadTokens(1).catch(() => undefined);
       return;
     }
-    if (activeTab === 'logs' && !logsLoaded) {
+    if (activeTab === 'logs' && logView === 'usage' && !logsLoaded) {
       loadLogs(1).catch(() => undefined);
+      return;
     }
-  }, [sessionUserId, activeTab, profileLoaded, topupLoaded, tokensLoaded, logsLoaded, refreshProfile, loadTopupInfo, loadTokens, loadLogs, resetWorkspaceState]);
+    if (activeTab === 'logs' && logView === 'tasks' && !tasksLoaded) {
+      loadTasks(1).catch(() => undefined);
+    }
+  }, [sessionUserId, activeTab, logView, profileLoaded, topupLoaded, tokensLoaded, logsLoaded, tasksLoaded, refreshProfile, loadTopupInfo, loadTokens, loadLogs, loadTasks, resetWorkspaceState]);
 
   useEffect(() => {
     if (!sessionUserId || activeTab !== 'billing' || !topupLoaded) {
@@ -545,7 +594,7 @@ const NewApiConsole: React.FC = () => {
       const quota = await redeemNewApiCode(redeemCode.trim());
       setRedeemCode('');
       await refreshProfile();
-      showAlert(`兑换成功，到账额度：${formatQuota(quota, status)}。`, { type: 'success' });
+      showAlert(`兑换成功，到账额度：${formatQuotaInUsd(quota, status)}。`, { type: 'success' });
     } catch (error) {
       showAlert(error instanceof Error ? error.message : '兑换失败', { type: 'error' });
     } finally {
@@ -681,7 +730,7 @@ const NewApiConsole: React.FC = () => {
                 <div className="mt-4 break-words text-lg font-semibold leading-tight">{session.username}</div>
                 <div className="mt-1 text-sm text-[var(--text-tertiary)]">已登录，可直接管理余额、令牌与日志</div>
                 <div className="mt-5 grid gap-3">
-                  <div className="min-w-0 rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3"><div className="text-xs uppercase tracking-[0.24em] text-[var(--text-tertiary)]">余额</div><div className="mt-2 break-all text-lg font-semibold leading-tight sm:text-xl">{formatQuota(session.user?.quota, status)}</div></div>
+                  <div className="min-w-0 rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3"><div className="text-xs uppercase tracking-[0.24em] text-[var(--text-tertiary)]">余额</div><div className="mt-2 break-all text-lg font-semibold leading-tight sm:text-xl">{formatQuotaInUsd(session.user?.quota, status)}</div></div>
                   <div className="min-w-0 rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3"><div className="text-xs uppercase tracking-[0.24em] text-[var(--text-tertiary)]">用户组</div><div className="mt-2 break-words text-sm font-medium text-[var(--text-secondary)]">{session.user?.group || '默认分组'}</div></div>
                 </div>
               </div>
@@ -707,7 +756,7 @@ const NewApiConsole: React.FC = () => {
               {activeTab === 'overview' && <OverviewPanel status={status} session={session} walletLoading={walletLoading} onRefreshProfile={refreshProfile} onTabChange={setActiveTab} />}
               {activeTab === 'billing' && <BillingPanel status={status} session={session} topupInfo={topupInfo} topupInfoLoading={topupInfoLoading} walletLoading={walletLoading} paymentLoading={paymentLoading} estimateLoading={estimateLoading} estimateError={estimateError} topupMethods={topupMethods} subscriptionPlans={subscriptionPlans} subscriptionLoading={subscriptionLoading} billingPreference={billingPreference} activeSubscriptions={activeSubscriptions} allSubscriptions={allSubscriptions} selectedPaymentMethod={selectedPaymentMethod} setSelectedPaymentMethod={setSelectedPaymentMethod} topupAmount={topupAmount} setTopupAmount={setTopupAmount} payableAmount={payableAmount} redeemCode={redeemCode} setRedeemCode={setRedeemCode} onOnlinePay={handleOnlinePay} onSubscriptionPay={handleSubscriptionPay} onRedeemCode={handleRedeemCode} onRefreshProfile={refreshProfile} onRefreshSubscriptions={refreshSubscriptionSelf} />}
               {activeTab === 'tokens' && <TokensPanel status={status} tokens={tokens} tokensLoading={tokensLoading} tokenPage={tokenPage} tokenTotal={tokenTotal} tokenPageSize={tokenPageSize} createTokenLoading={createTokenLoading} tokenForm={tokenForm} setTokenForm={setTokenForm} onCreateToken={handleCreateToken} onRefreshTokens={() => loadTokens(tokenPage)} onPageChange={loadTokens} onToggleToken={handleToggleToken} onDeleteToken={handleDeleteToken} onCopyToken={handleCopyToken} onUseTokenInProject={handleUseTokenInProject} />}
-              {activeTab === 'logs' && <LogsPanel status={status} logs={logs} logsLoading={logsLoading} logStats={logStats} logType={logType} setLogType={setLogType} logStart={logStart} setLogStart={setLogStart} logEnd={logEnd} setLogEnd={setLogEnd} logChannelId={logChannelId} setLogChannelId={setLogChannelId} logTokenName={logTokenName} setLogTokenName={setLogTokenName} logModelName={logModelName} setLogModelName={setLogModelName} logPage={logPage} logPageSize={logPageSize} logTotal={logTotal} onSearch={() => loadLogs(1)} onPageChange={loadLogs} />}
+              {activeTab === 'logs' && <LogsPanel status={status} logView={logView} setLogView={setLogView} logs={logs} logsLoading={logsLoading} logStats={logStats} logType={logType} setLogType={setLogType} logStart={logStart} setLogStart={setLogStart} logEnd={logEnd} setLogEnd={setLogEnd} logChannelId={logChannelId} setLogChannelId={setLogChannelId} logTokenName={logTokenName} setLogTokenName={setLogTokenName} logModelName={logModelName} setLogModelName={setLogModelName} logPage={logPage} logPageSize={logPageSize} logTotal={logTotal} onUsageSearch={() => loadLogs(1)} onUsagePageChange={loadLogs} tasks={tasks} tasksLoading={tasksLoading} taskStart={taskStart} setTaskStart={setTaskStart} taskEnd={taskEnd} setTaskEnd={setTaskEnd} taskTaskId={taskTaskId} setTaskTaskId={setTaskTaskId} taskStatus={taskStatus} setTaskStatus={setTaskStatus} taskPlatform={taskPlatform} setTaskPlatform={setTaskPlatform} taskPage={taskPage} taskPageSize={taskPageSize} taskTotal={taskTotal} onTaskSearch={() => loadTasks(1)} onTaskPageChange={loadTasks} />}
             </main>
           </div>
         )}

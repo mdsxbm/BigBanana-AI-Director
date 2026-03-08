@@ -1,5 +1,7 @@
 export type AccountTab = 'overview' | 'billing' | 'tokens' | 'logs';
 
+export type LogView = 'usage' | 'tasks';
+
 export interface LoginFormState {
   username: string;
   password: string;

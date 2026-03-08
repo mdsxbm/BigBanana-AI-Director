@@ -27,6 +27,14 @@ export const getQuotaPerUnit = (status: NewApiStatus | null) => {
   return Number.isFinite(value) && value > 0 ? value : 500000;
 };
 
+const formatUsdCredits = (credits: number) => `$${credits.toFixed(2)}`;
+
+export const formatQuotaInUsd = (quota: number | undefined, status: NewApiStatus | null) => {
+  if (quota === undefined || quota === null) return '—';
+  const credits = quota / getQuotaPerUnit(status);
+  return formatUsdCredits(credits);
+};
+
 export const formatQuota = (quota: number | undefined, status: NewApiStatus | null) => {
   if (quota === undefined || quota === null) return '—';
   const credits = quota / getQuotaPerUnit(status);
@@ -37,7 +45,7 @@ export const formatQuota = (quota: number | undefined, status: NewApiStatus | nu
     return `${symbol}${(credits * exchangeRate).toFixed(2)}`;
   }
 
-  return `$${credits.toFixed(2)}`;
+  return formatUsdCredits(credits);
 };
 
 export const formatPayableAmount = (amount: number | null, status: NewApiStatus | null) => {

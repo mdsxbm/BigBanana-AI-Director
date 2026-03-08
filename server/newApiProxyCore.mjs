@@ -645,6 +645,25 @@ export const createNewApiProxyHandler = () => {
         return;
       }
 
+      if (pathname === '/api/new-api/tasks' && req.method === 'GET') {
+        await proxyAuthed(
+          req,
+          res,
+          `/api/task/self${buildQueryString({
+            p: requestUrl.searchParams.get('p'),
+            page_size: requestUrl.searchParams.get('page_size'),
+            channel_id: requestUrl.searchParams.get('channel_id'),
+            task_id: requestUrl.searchParams.get('task_id'),
+            platform: requestUrl.searchParams.get('platform'),
+            status: requestUrl.searchParams.get('status'),
+            action: requestUrl.searchParams.get('action'),
+            start_timestamp: requestUrl.searchParams.get('start_timestamp'),
+            end_timestamp: requestUrl.searchParams.get('end_timestamp'),
+          })}`,
+        );
+        return;
+      }
+
       if (pathname === '/api/new-api/logs/stat' && req.method === 'GET') {
         await proxyAuthed(
           req,
