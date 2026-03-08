@@ -15,7 +15,7 @@ interface TokensPanelProps {
   createTokenLoading: boolean;
   tokenForm: TokenFormState;
   setTokenForm: React.Dispatch<React.SetStateAction<TokenFormState>>;
-  onCreateToken: () => Promise<void>;
+  onCreateToken: () => Promise<boolean>;
   onRefreshTokens: () => Promise<void>;
   onPageChange: (page: number) => Promise<void>;
   onToggleToken: (token: NewApiToken) => Promise<void>;
@@ -43,58 +43,85 @@ export const TokensPanel: React.FC<TokensPanelProps> = ({
   onUseTokenInProject,
 }) => {
   const totalPages = Math.max(1, Math.ceil(tokenTotal / tokenPageSize));
+  const [isCreateFormOpen, setIsCreateFormOpen] = React.useState(false);
+
+  const handleCreate = async () => {
+    const created = await onCreateToken();
+    if (created) {
+      setIsCreateFormOpen(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
       <div className="space-y-6">
         <SectionCard title="创建新令牌" description="先把当前项目最需要的创作密钥创建出来，再决定是否限额或设置到期时间。">
-          <div className="space-y-4">
-            <input
-              value={tokenForm.name}
-              onChange={(event) => setTokenForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="令牌名称"
-              className="w-full rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 outline-none transition-colors focus:border-[var(--accent)]"
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
+          {isCreateFormOpen ? (
+            <div className="space-y-4">
               <input
-                value={tokenForm.creditsLimit}
-                onChange={(event) => setTokenForm((current) => ({ ...current, creditsLimit: event.target.value }))}
-                disabled={tokenForm.unlimitedQuota}
-                placeholder="额度上限（例如 5）"
-                className="w-full rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 outline-none transition-colors focus:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              <input
-                type="datetime-local"
-                value={tokenForm.expiredAt}
-                onChange={(event) => setTokenForm((current) => ({ ...current, expiredAt: event.target.value }))}
+                value={tokenForm.name}
+                onChange={(event) => setTokenForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="令牌名称"
                 className="w-full rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 outline-none transition-colors focus:border-[var(--accent)]"
               />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <input
+                  type="datetime-local"
+                  value={tokenForm.expiredAt}
+                  onChange={(event) => setTokenForm((current) => ({ ...current, expiredAt: event.target.value }))}
+                  className="w-full rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 outline-none transition-colors focus:border-[var(--accent)]"
+                />
+
+                <label className="flex items-center gap-3 rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={tokenForm.unlimitedQuota}
+                    onChange={(event) => setTokenForm((current) => ({ ...current, unlimitedQuota: event.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  创建无限额度令牌
+                </label>
+              </div>
+
+              {!tokenForm.unlimitedQuota && (
+                <div className="rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-4 text-sm leading-6 text-[var(--text-tertiary)]">
+                  已关闭无限额度时，系统会按默认的 1 点额度创建令牌，不再单独展示额度输入框。
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-4 text-sm leading-6 text-[var(--text-tertiary)]">
+                如果你准备把它直接用于当前项目，建议先创建一个名字明确、便于回填的令牌，例如 “BigBanana-创作主 Key”。
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setIsCreateFormOpen(false)}
+                  disabled={createTokenLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--border-primary)] px-4 py-3 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--border-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-60"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => void handleCreate()}
+                  disabled={createTokenLoading}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--btn-primary-bg)] px-4 py-3 text-sm font-medium text-[var(--btn-primary-text)] transition-colors hover:bg-[var(--btn-primary-hover)] disabled:opacity-60"
+                >
+                  {createTokenLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  确认创建
+                </button>
+              </div>
             </div>
-
-            <label className="flex items-center gap-3 rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-3 text-sm text-[var(--text-secondary)]">
-              <input
-                type="checkbox"
-                checked={tokenForm.unlimitedQuota}
-                onChange={(event) => setTokenForm((current) => ({ ...current, unlimitedQuota: event.target.checked }))}
-                className="h-4 w-4"
-              />
-              创建无限额度令牌
-            </label>
-
-            <div className="rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-4 py-4 text-sm leading-6 text-[var(--text-tertiary)]">
-              如果你准备把它直接用于当前项目，建议先创建一个名字明确、便于回填的令牌，例如 “BigBanana-创作主 Key”。
+          ) : (
+            <div className="rounded-2xl border border-[var(--border-primary)] bg-[var(--bg-secondary)] px-5 py-6 text-center">
+              <button
+                onClick={() => setIsCreateFormOpen(true)}
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--btn-primary-bg)] px-5 py-3 text-sm font-medium text-[var(--btn-primary-text)] transition-colors hover:bg-[var(--btn-primary-hover)]"
+              >
+                <Plus className="h-4 w-4" /> 创建新令牌
+              </button>
             </div>
-
-            <button
-              onClick={() => void onCreateToken()}
-              disabled={createTokenLoading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--btn-primary-bg)] px-4 py-3 text-sm font-medium text-[var(--btn-primary-text)] transition-colors hover:bg-[var(--btn-primary-hover)] disabled:opacity-60"
-            >
-              {createTokenLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              创建令牌
-            </button>
-          </div>
+          )}
         </SectionCard>
 
         <SectionCard

@@ -61,7 +61,7 @@ import { TokensPanel } from './account-center/TokensPanel';
 const createDefaultTokenForm = (): TokenFormState => ({
   name: 'BigBanana',
   unlimitedQuota: true,
-  creditsLimit: '5',
+  creditsLimit: '1',
   expiredAt: '',
 });
 
@@ -553,15 +553,15 @@ const NewApiConsole: React.FC = () => {
     }
   };
 
-  const handleCreateToken = async () => {
+  const handleCreateToken = async (): Promise<boolean> => {
     if (!tokenForm.name.trim()) {
       showAlert('请输入令牌名称。', { type: 'warning' });
-      return;
+      return false;
     }
     const creditsLimit = Number(tokenForm.creditsLimit || '0');
     if (!tokenForm.unlimitedQuota && (!Number.isFinite(creditsLimit) || creditsLimit < 0)) {
       showAlert('请输入正确的额度上限。', { type: 'warning' });
-      return;
+      return false;
     }
     setCreateTokenLoading(true);
     try {
@@ -574,8 +574,10 @@ const NewApiConsole: React.FC = () => {
       await loadTokens(1);
       setTokenForm(createDefaultTokenForm());
       showAlert('令牌已创建，请在列表中复制或直接设为当前创作 Key。', { type: 'success' });
+      return true;
     } catch (error) {
       showAlert(error instanceof Error ? error.message : '创建令牌失败', { type: 'error' });
+      return false;
     } finally {
       setCreateTokenLoading(false);
     }

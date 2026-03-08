@@ -493,11 +493,12 @@ export const BillingPanel: React.FC<BillingPanelProps> = ({
             </div>
           </SectionCard>
 
-          <SectionCard title="使用提示" description="把操作说明放在旁边，避免用户一边充值一边找帮助。">
+          <SectionCard title="使用提示" description="按下面步骤完成在线充值或兑换码兑换，金额会自动更新。">
             <ul className="space-y-3 text-sm leading-6 text-[var(--text-secondary)]">
-              <li>- 输入或切换充值数量后，金额会自动更新，无需再单独点击“计算金额”。</li>
-              <li>- 订阅套餐的有效期、总额度、额度重置和当前订阅的剩余额度，已按 new-api 原页面的口径展示。</li>
-              <li>- 官方链接对应的是兑换码购买页，购买后请回到右侧输入兑换码完成到账。</li>
+              <li>- 在线充值：先选择支付方式，再选择快捷金额或手动输入充值数量，确认无误后点击“立即支付”。</li>
+              <li>- 金额说明：输入或切换充值数量后，下方“预估支付金额”会自动计算，无需额外操作。</li>
+              <li>- 兑换码使用：已有兑换码时，直接在右上方输入兑换码并点击“立即兑换”。</li>
+              <li>- 购买兑换码：如果还没有兑换码，可先点击“购买兑换码”，购买完成后返回此处兑换到账。</li>
               {topupInfo?.min_topup !== undefined && <li>- 当前最小充值数量：{topupInfo.min_topup}</li>}
             </ul>
           </SectionCard>
