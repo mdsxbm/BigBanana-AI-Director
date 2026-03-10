@@ -292,7 +292,23 @@ export const DEFAULT_VIDEO_PARAMS_VEO_FAST: VideoModelParams = {
  * 默认视频模型参数 (豆包 Seedance 1.5 Pro)
  * 火山引擎任务接口，当前按固定时长使用
  */
-export const DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE: VideoModelParams = {
+export const DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE_1_5: VideoModelParams = {
+  mode: 'async',
+  defaultAspectRatio: '16:9',
+  supportedAspectRatios: ['16:9', '9:16'],
+  defaultDuration: 8,
+  supportedDurations: [4, 8, 12],
+};
+
+// Backward-compatible export for existing imports.
+export const DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE: VideoModelParams =
+  DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE_1_5;
+
+/**
+ * Default video model params (Doubao Seedance 2.0)
+ * Volcengine async task API, currently using fixed durations.
+ */
+export const DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE_2_0: VideoModelParams = {
   mode: 'async',
   defaultAspectRatio: '16:9',
   supportedAspectRatios: ['16:9', '9:16'],
@@ -338,8 +354,8 @@ export const BUILTIN_CHAT_MODELS: ChatModelDefinition[] = [
   },
  
   {
-    id: 'gpt-41',
-    name: 'GPT-4.1',
+    id: 'gpt-5.4',
+    name: 'GPT-5.4',
     type: 'chat',
     providerId: 'antsk',
     description: '高性价比稳健模型：指令遵循与代码能力强，支持超长上下文，适合规模化文本处理',
@@ -468,16 +484,28 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     params: { ...DEFAULT_VIDEO_PARAMS_SORA },
   },
   {
+    id: 'doubao-seedance-1-5-pro',
+    apiModel: 'doubao-seedance-1-5-pro',
+    name: 'Doubao Seedance 1.5 Pro (内置)',
+    type: 'video',
+    providerId: 'antsk',
+    endpoint: '/v1/videos',
+    description: 'AntSK async video mode via /v1/videos with Sora-2-compatible request format, supporting 4/8/12 seconds.',
+    isBuiltIn: true,
+    isEnabled: true,
+    params: { ...DEFAULT_VIDEO_PARAMS_SORA },
+  },
+  {
     id: 'doubao-seedance-1-5-pro-251215',
     apiModel: 'doubao-seedance-1-5-pro-251215',
     name: 'Doubao Seedance 1.5 Pro',
     type: 'video',
     providerId: 'volcengine',
     endpoint: '/api/v3/contents/generations/tasks',
-    description: '火山引擎异步任务模式（create task + poll task），支持 5/10/15 秒',
+    description: '火山引擎异步任务模式（create task + poll task），支持 4/8/12 秒',
     isBuiltIn: true,
     isEnabled: true,
-    params: { ...DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE },
+    params: { ...DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE_1_5 },
   },
   {
     id: 'doubao-seedance-2-0-260128',
@@ -489,7 +517,7 @@ export const BUILTIN_VIDEO_MODELS: VideoModelDefinition[] = [
     description: '火山引擎异步任务模式（create task + poll task），支持 5/10/15 秒',
     isBuiltIn: true,
     isEnabled: true,
-    params: { ...DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE },
+    params: { ...DEFAULT_VIDEO_PARAMS_DOUBAO_SEEDANCE_2_0 },
   },
 ];
 

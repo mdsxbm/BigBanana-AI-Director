@@ -33,6 +33,7 @@ import VideoGenerator from './VideoGenerator';
 import DubbingPanel from './DubbingPanel';
 import { resolveVideoModelRouting } from './utils';
 import { getModelById } from '../../services/modelRegistry';
+import { findSceneByIdCompat, getShotDisplayKey } from '../../services/storyboardIdUtils';
 import {
   STORYBOARD_GRID_LAYOUTS,
   resolveStoryboardGridLayout,
@@ -133,7 +134,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
   onSelectNineGridPanel,
   onShowNineGrid,
 }) => {
-  const scene = scriptData?.scenes.find((s) => String(s.id) === String(shot.sceneId));
+  const scene = findSceneByIdCompat(scriptData?.scenes, shot.sceneId);
   const activeCharacters = scriptData?.characters.filter((c) => shot.characters.includes(c.id)) || [];
   const availableCharacters = scriptData?.characters.filter((c) => !shot.characters.includes(c.id)) || [];
   const activeProps = (scriptData?.props || []).filter((p) => (shot.props || []).includes(p.id));
@@ -414,10 +415,7 @@ const ShotWorkbench: React.FC<ShotWorkbenchProps> = ({
   ]);
 
   const getShotDisplayNumber = () => {
-    const idParts = shot.id.split('-').slice(1);
-    if (idParts.length === 1) return String(idParts[0]).padStart(2, '0');
-    if (idParts.length === 2) return `${String(idParts[0]).padStart(2, '0')}-${idParts[1]}`;
-    return String(shotIndex + 1).padStart(2, '0');
+    return getShotDisplayKey(shot.id, shotIndex);
   };
 
   const renderSectionHeader = (

@@ -1,11 +1,12 @@
 import { ScriptData, Shot, ShotQualityAssessment, QualityCheck } from '../types';
 import {
   chatCompletion,
-  cleanJsonString,
+  parseJsonWithRecovery,
   retryOperation,
   getActiveChatModel,
 } from './aiService';
 import { assessShotQuality } from './qualityAssessmentService';
+import { findSceneByIdCompat } from './storyboardIdUtils';
 
 const QUALITY_SCHEMA_VERSION = 2;
 
@@ -82,21 +83,11 @@ const buildSummary = (checks: QualityCheck[], grade: ShotQualityAssessment['grad
 };
 
 const safeJsonParse = (raw: string): LLMRawResponse => {
-  const cleaned = cleanJsonString(raw);
-  try {
-    return JSON.parse(cleaned);
-  } catch (error) {
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
-    }
-    throw error;
-  }
+  return parseJsonWithRecovery<LLMRawResponse>(raw, {});
 };
 
 const buildShotAssessmentContext = (shot: Shot, scriptData?: ScriptData | null) => {
-  const scene = scriptData?.scenes.find((entry) => String(entry.id) === String(shot.sceneId));
+  const scene = findSceneByIdCompat(scriptData?.scenes, shot.sceneId);
   const startFrame = shot.keyframes?.find((frame) => frame.type === 'start');
   const endFrame = shot.keyframes?.find((frame) => frame.type === 'end');
   const characters = (shot.characters || []).map((charId) => {

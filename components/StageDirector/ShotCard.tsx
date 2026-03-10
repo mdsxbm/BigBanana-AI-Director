@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image as ImageIcon, Video, Trash2 } from 'lucide-react';
 import { Shot } from '../../types';
+import { getShotDisplayLabel } from '../../services/storyboardIdUtils';
 
 interface ShotCardProps {
   shot: Shot;
@@ -28,19 +29,7 @@ const ShotCard: React.FC<ShotCardProps> = ({ shot, index, isActive, onClick, onD
 
   // 从shot.id中提取显示编号
   // 例如：shot-1 → "SHOT 001", shot-1-1 → "SHOT 001-1", shot-1-2 → "SHOT 001-2"
-  const getShotDisplayNumber = () => {
-    const idParts = shot.id.split('-').slice(1); // 移除 "shot" 前缀
-    if (idParts.length === 1) {
-      // 主镜头：shot-1 → "SHOT 001"
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}`;
-    } else if (idParts.length === 2) {
-      // 子镜头：shot-1-1 → "SHOT 001-1"
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
-    } else {
-      // 降级方案：使用index
-      return `SHOT ${String(index + 1).padStart(3, '0')}`;
-    }
-  };
+  const getShotDisplayNumber = () => getShotDisplayLabel(shot.id, index);
 
   return (
     <div 

@@ -15,9 +15,20 @@ import {
   resizeImageToSize,
   getSoraVideoSize,
 } from './apiCore';
+import { toFriendlyModerationMessage } from '../errorMessageService';
 
 const VOLCENGINE_TASK_DEFAULT_ENDPOINT = '/api/v3/contents/generations/tasks';
 const VOLCENGINE_DEFAULT_MODEL = 'doubao-seedance-1-5-pro-251215';
+const SORA_COMPATIBLE_VIDEO_MODELS = new Set([
+  'sora-2',
+  'doubao-seedance-1-5-pro',
+]);
+
+const isSoraCompatibleVideoModel = (modelName: string): boolean =>
+  SORA_COMPATIBLE_VIDEO_MODELS.has((modelName || '').trim().toLowerCase());
+
+const toFriendlyVideoErrorMessage = (message: string): string =>
+  toFriendlyModerationMessage(message) || message;
 
 const mapVolcengineRatio = (
   aspectRatio: AspectRatio,
@@ -62,13 +73,14 @@ const generateVideoAsync = async (
 ): Promise<string> => {
   let references = [startImageBase64, endImageBase64].filter(Boolean) as string[];
   const resolvedModelName = modelName || 'sora-2';
+  const isSoraCompatibleModel = isSoraCompatibleVideoModel(resolvedModelName);
   const useReferenceArray = resolvedModelName.toLowerCase().startsWith('veo_3_1-fast');
-  if (resolvedModelName === 'sora-2' && references.length >= 2) {
+  if (isSoraCompatibleModel && references.length >= 2) {
     console.warn('⚠️ Capability routing: sora-2 only supports start-frame reference. End-frame reference will be ignored.');
     references = references.slice(0, 1);
   }
 
-  if (resolvedModelName === 'sora-2' && references.length >= 2) {
+  if (isSoraCompatibleModel && references.length >= 2) {
     throw new Error('Sora-2 不支持首尾帧模式，请只传一张参考图。');
   }
 
@@ -137,7 +149,7 @@ const generateVideoAsync = async (
       const errorText = await createResponse.text();
       if (errorText) errorMessage = errorText;
     }
-    throw new Error(errorMessage);
+    throw new Error(toFriendlyVideoErrorMessage(errorMessage));
   }
 
   const createData = await createResponse.json();
@@ -195,7 +207,7 @@ const generateVideoAsync = async (
         statusData?.error?.code ||
         statusData?.message ||
         '未知错误';
-      throw new Error(`视频生成失败: ${errorMessage}`);
+      throw new Error(toFriendlyVideoErrorMessage(errorMessage));
     }
   }
 
@@ -459,7 +471,7 @@ const generateVideoVolcengineTask = async (
         statusData?.message ||
         statusData?.msg ||
         '未知错误';
-      throw new Error(`视频生成失败: ${errorMessage}`);
+      throw new Error(toFriendlyVideoErrorMessage(errorMessage));
     }
   }
 
@@ -489,9 +501,10 @@ export const generateVideo = async (
   const apiBase = getApiBase('video', model);
   const resolvedEndpoint = (resolvedVideoModel as any)?.endpoint || '';
   const normalizedRequestModel = (requestModel || resolvedVideoModelId || '').toLowerCase();
+  const isSoraCompatibleModel = isSoraCompatibleVideoModel(normalizedRequestModel);
   const isVolcengineTaskMode =
     resolvedEndpoint.includes('/contents/generations/tasks') ||
-    normalizedRequestModel.startsWith('doubao-seedance');
+    (normalizedRequestModel.startsWith('doubao-seedance') && !isSoraCompatibleModel);
 
   if (isVolcengineTaskMode) {
     return generateVideoVolcengineTask(
@@ -509,7 +522,7 @@ export const generateVideo = async (
 
   const isAsyncMode =
     (resolvedVideoModel?.params as any)?.mode === 'async' ||
-    normalizedRequestModel === 'sora-2' ||
+    isSoraCompatibleModel ||
     normalizedRequestModel.startsWith('veo_3_1-fast');
 
   // 异步模式
@@ -590,7 +603,7 @@ export const generateVideo = async (
           const errorText = await res.text();
           if (errorText) errorMessage = errorText;
         }
-        throw new Error(errorMessage);
+        throw new Error(toFriendlyVideoErrorMessage(errorMessage));
       }
 
       return res;

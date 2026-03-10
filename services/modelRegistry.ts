@@ -19,6 +19,7 @@ import {
   AspectRatio,
   VideoDuration,
 } from '../types/model';
+import { normalizeChatModelId } from './modelIdUtils';
 
 // localStorage 键名
 const STORAGE_KEY = 'bigbanana_model_registry';
@@ -73,6 +74,33 @@ export const loadRegistry = (): ModelRegistryState => {
         ...DEFAULT_ACTIVE_MODELS,
         ...(parsed.activeModels || {}),
       };
+
+      let chatModelAliasMigrated = false;
+      const hasBuiltinGpt54 = parsed.models.some(m => m.type === 'chat' && m.id === 'gpt-5.4');
+      parsed.models = parsed.models.flatMap((model) => {
+        if (!(model.type === 'chat' && model.id === 'gpt-41')) {
+          return [model];
+        }
+
+        chatModelAliasMigrated = true;
+
+        if (hasBuiltinGpt54) {
+          return [];
+        }
+
+        return [{
+          ...model,
+          id: 'gpt-5.4',
+          name: 'GPT-5.4',
+          apiModel: 'gpt-5.4',
+        }];
+      });
+
+      const normalizedActiveChatModel = normalizeChatModelId(parsed.activeModels.chat);
+      if (normalizedActiveChatModel && normalizedActiveChatModel !== parsed.activeModels.chat) {
+        parsed.activeModels.chat = normalizedActiveChatModel;
+        chatModelAliasMigrated = true;
+      }
       
       // 确保内置模型和提供商始终存在
       const builtInProviderIds = BUILTIN_PROVIDERS.map(p => p.id);
@@ -164,6 +192,26 @@ export const loadRegistry = (): ModelRegistryState => {
       parsed.models = parsed.models.filter(
         m => !(m.type === 'video' && deprecatedVideoModelIds.includes(m.id))
       );
+      // Clean legacy AntSK built-in alias model entries:
+      // doubao-seedance-1-5-pro-251215 on /v1/videos should be replaced by
+      // doubao-seedance-1-5-pro (AntSK) and volcengine 251215 task model.
+      parsed.models = parsed.models.filter((m) => {
+        if (!(m.type === 'video' && m.isBuiltIn)) return true;
+
+        const normalizedApiModel = (m.apiModel || '').trim().toLowerCase();
+        const normalizedId = (m.id || '').trim().toLowerCase();
+        const normalizedEndpoint = (m.endpoint || '').trim().toLowerCase();
+
+        const isLegacyAntskDoubaoAlias =
+          m.providerId === 'antsk' &&
+          normalizedEndpoint.includes('/v1/videos') &&
+          (
+            normalizedApiModel === 'doubao-seedance-1-5-pro-251215' ||
+            (!normalizedApiModel && normalizedId.includes('doubao-seedance-1-5-pro-251215'))
+          );
+
+        return !isLegacyAntskDoubaoAlias;
+      });
       const modelsRemoved = modelCountBefore - parsed.models.length;
 
       // 迁移激活视频模型
@@ -203,7 +251,7 @@ export const loadRegistry = (): ModelRegistryState => {
       registryState = parsed;
 
       // 如果发生了迁移，立即回写 localStorage，避免每次加载都重复执行
-      if (modelsRemoved > 0 || activeModelMigrated || modelsReordered) {
+      if (modelsRemoved > 0 || activeModelMigrated || modelsReordered || chatModelAliasMigrated) {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
           console.log(`🔄 模型注册中心迁移完成：清理 ${modelsRemoved} 个废弃模型`);
@@ -339,20 +387,45 @@ export const removeProvider = (id: string): boolean => {
  * 获取所有模型
  */
 export const getModels = (type?: ModelType): ModelDefinition[] => {
-  const models = loadRegistry().models.filter(
+  const state = loadRegistry();
+  const models = state.models.filter(
     m => !(m.type === 'video' && m.isBuiltIn && m.id === 'veo')
   );
   if (type) {
     const typedModels = models.filter(m => m.type === type);
 
-    // Keep sora-2 at the top of video model lists while preserving relative order for others.
+    // Video model ordering:
+    // 1) non-Volcengine models first
+    // 2) built-in before custom within each group
+    // 3) keep sora-2 pinned to top of non-Volcengine built-ins
+    // 4) otherwise preserve relative order
     if (type === 'video') {
+      const providersById = new Map(state.providers.map((provider) => [provider.id, provider]));
+      const isVolcengineModel = (model: ModelDefinition): boolean => {
+        if (model.providerId === 'volcengine') return true;
+        const provider = providersById.get(model.providerId);
+        return !!provider?.baseUrl?.toLowerCase().includes('volces.com');
+      };
+
       return typedModels
-        .map((model, index) => ({ model, index }))
+        .map((model, index) => ({
+          model,
+          index,
+          isVolcengine: isVolcengineModel(model),
+        }))
         .sort((a, b) => {
-          const aPriority = a.model.id === 'sora-2' ? 0 : 1;
-          const bPriority = b.model.id === 'sora-2' ? 0 : 1;
-          if (aPriority !== bPriority) return aPriority - bPriority;
+          const aVolcPriority = a.isVolcengine ? 1 : 0;
+          const bVolcPriority = b.isVolcengine ? 1 : 0;
+          if (aVolcPriority !== bVolcPriority) return aVolcPriority - bVolcPriority;
+
+          const aBuiltInPriority = a.model.isBuiltIn ? 0 : 1;
+          const bBuiltInPriority = b.model.isBuiltIn ? 0 : 1;
+          if (aBuiltInPriority !== bBuiltInPriority) return aBuiltInPriority - bBuiltInPriority;
+
+          const aSoraPriority = a.model.id === 'sora-2' ? 0 : 1;
+          const bSoraPriority = b.model.id === 'sora-2' ? 0 : 1;
+          if (aSoraPriority !== bSoraPriority) return aSoraPriority - bSoraPriority;
+
           return a.index - b.index;
         })
         .map(item => item.model);

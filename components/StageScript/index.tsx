@@ -25,6 +25,15 @@ import AssetMatchDialog from './AssetMatchDialog';
 import { findAssetMatches, applyAssetMatches, AssetMatchResult } from '../../services/assetMatchService';
 import { loadSeriesProject } from '../../services/storageService';
 import { resolvePromptTemplateConfig } from '../../services/promptTemplateService';
+import {
+  filterBySceneIdCompat,
+  getNextMainShotId,
+  getNextSubShotId,
+  getShotDisplayLabel,
+  sceneIdsMatch,
+  getShotGroupPrefix,
+  shotBelongsToGroup,
+} from '../../services/storyboardIdUtils';
 
 interface Props {
   project: ProjectState;
@@ -1251,34 +1260,18 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
   };
 
   const getNextShotId = (shots: Shot[]) => {
-    const maxMain = shots.reduce((max, shot) => {
-      const parts = shot.id.split('-');
-      const main = Number(parts[1]);
-      if (!Number.isFinite(main)) return max;
-      return Math.max(max, main);
-    }, 0);
-    return `shot-${maxMain + 1}`;
+    return getNextMainShotId(shots.map((shot) => shot.id));
   };
 
   const handleAddSubShot = (anchorShotId: string) => {
     const anchorShot = project.shots.find(s => s.id === anchorShotId);
     if (!anchorShot) return;
 
-    const parts = anchorShotId.split('-');
-    const main = Number(parts[1]);
-    if (!Number.isFinite(main)) return;
+    const newId = getNextSubShotId(anchorShotId, project.shots.map((shot) => shot.id));
+    if (!newId) return;
 
-    const baseId = `shot-${main}`;
-    const maxSuffix = project.shots.reduce((max, shot) => {
-      if (!shot.id.startsWith(`${baseId}-`)) return max;
-      const subParts = shot.id.split('-');
-      const suffix = Number(subParts[2]);
-      if (!Number.isFinite(suffix)) return max;
-      return Math.max(max, suffix);
-    }, 0);
-
-    const newId = `${baseId}-${maxSuffix + 1}`;
-    const baseShot = project.shots.find(s => s.id === baseId) || anchorShot;
+    const groupPrefix = getShotGroupPrefix(anchorShotId);
+    const baseShot = project.shots.find((shot) => shot.id === groupPrefix) || anchorShot;
     const newShot: Shot = {
       id: newId,
       sceneId: baseShot.sceneId,
@@ -1300,7 +1293,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
     };
 
     const lastIndexInGroup = project.shots.reduce((idx, shot, i) => {
-      const isGroup = shot.id === baseId || shot.id.startsWith(`${baseId}-`);
+      const isGroup = shotBelongsToGroup(shot.id, groupPrefix);
       return isGroup ? i : idx;
     }, -1);
 
@@ -1320,7 +1313,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
   const handleAddShot = (sceneId: string) => {
     if (!project.scriptData) return;
 
-    const sceneShots = project.shots.filter(s => s.sceneId === sceneId);
+    const sceneShots = filterBySceneIdCompat(project.shots, sceneId);
     if (sceneShots.length > 0) {
       handleAddSubShot(sceneShots[sceneShots.length - 1].id);
       return;
@@ -1346,7 +1339,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
 
     const sceneIndex = project.scriptData.scenes.findIndex(s => s.id === sceneId);
     const lastIndexInScene = project.shots.reduce((idx, shot, i) => (
-      shot.sceneId === sceneId ? i : idx
+      sceneIdsMatch(shot.sceneId, sceneId) ? i : idx
     ), -1);
 
     let insertAt = project.shots.length;
@@ -1355,7 +1348,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
     } else if (sceneIndex >= 0) {
       for (let i = sceneIndex + 1; i < project.scriptData.scenes.length; i += 1) {
         const nextSceneId = project.scriptData.scenes[i].id;
-        const nextIndex = project.shots.findIndex(s => s.sceneId === nextSceneId);
+        const nextIndex = project.shots.findIndex(s => sceneIdsMatch(s.sceneId, nextSceneId));
         if (nextIndex >= 0) {
           insertAt = nextIndex;
           break;
@@ -1376,14 +1369,7 @@ const StageScript: React.FC<Props> = ({ project, updateProject, onShowModelConfi
   };
 
   const getShotDisplayName = (shot: Shot, fallbackIndex: number) => {
-    const idParts = shot.id.split('-').slice(1);
-    if (idParts.length === 1) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}`;
-    }
-    if (idParts.length === 2) {
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
-    }
-    return `SHOT ${String(fallbackIndex + 1).padStart(3, '0')}`;
+    return getShotDisplayLabel(shot.id, fallbackIndex);
   };
 
   const handleDeleteShot = (shotId: string) => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { Clock, List, ArrowLeft, TextQuote, Plus } from 'lucide-react';
 import { ProjectState, Shot } from '../../types';
 import { deduplicateScenes } from './utils';
+import { filterBySceneIdCompat } from '../../services/storyboardIdUtils';
 import CharacterList from './CharacterList';
 import SceneList from './SceneList';
 import ShotRow from './ShotRow';
@@ -127,7 +128,7 @@ const SceneBreakdown: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto bg-[var(--bg-base)] p-0">
           <div className="max-w-5xl mx-auto pb-20">
             {project.scriptData?.scenes.map((scene, index) => {
-              const sceneShots = project.shots.filter(s => s.sceneId === scene.id);
+              const sceneShots = filterBySceneIdCompat(project.shots, scene.id);
 
               return (
                 <div key={scene.id} className="border-b border-[var(--border-primary)]">

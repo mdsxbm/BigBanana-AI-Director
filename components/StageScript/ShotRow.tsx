@@ -3,6 +3,7 @@ import { Aperture, Edit2, Check, X, UserPlus, Trash2, Plus } from 'lucide-react'
 import { Shot, Character, ScriptData } from '../../types';
 import InlineEditor from './InlineEditor';
 import { STYLES } from './constants';
+import { getShotDisplayLabel } from '../../services/storyboardIdUtils';
 
 interface Props {
   shot: Shot;
@@ -53,19 +54,7 @@ const ShotRow: React.FC<Props> = ({
 }) => {
   // 从shot.id中提取显示编号
   // 例如：shot-1 → "SHOT 001", shot-1-1 → "SHOT 001-1"
-  const getShotDisplayNumber = () => {
-    const idParts = shot.id.split('-').slice(1); // 移除 "shot" 前缀
-    if (idParts.length === 1) {
-      // 主镜头：shot-1 → "SHOT 001"
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}`;
-    } else if (idParts.length === 2) {
-      // 子镜头：shot-1-1 → "SHOT 001-1"
-      return `SHOT ${String(idParts[0]).padStart(3, '0')}-${idParts[1]}`;
-    } else {
-      // 降级方案：使用传入的shotNumber
-      return `SHOT ${shotNumber.toString().padStart(3, '0')}`;
-    }
-  };
+  const getShotDisplayNumber = () => getShotDisplayLabel(shot.id, shotNumber - 1);
 
   return (
     <div className="group bg-[var(--bg-base)] hover:bg-[var(--bg-primary)] transition-colors p-8 flex gap-8">

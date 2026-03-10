@@ -57,10 +57,11 @@ export const resolveStoryboardGridLayout = (panelCount?: number): StoryboardGrid
 };
 
 export const NINE_GRID_SPLIT_PROMPT = {
-  system: `你是专业分镜师。请把同一镜头拆成{panelCount}个不重复视角，用于{gridLayout}网格分镜。保持同一场景与角色连续性。`,
+  system: `你是专业分镜师。请把同一镜头拆成{panelCount}个不重复视角，用于{gridLayout}网格分镜。网格布局必须严格为 {layoutInstruction}。保持同一场景与角色连续性。`,
 
   user: `请将以下镜头动作拆解为{panelCount}个不同的摄影视角，用于生成一张{gridLayout}网格分镜图。
-
+网格硬约束：必须严格为 {layoutInstruction}，顺序为从左到右、从上到下。{layoutSpecificConstraint}
+行列顺序示意：{layoutExample}
 【镜头动作】{actionSummary}
 【原始镜头运动】{cameraMovement}
 【场景信息】地点: {location}, 时间: {time}, 氛围: {atmosphere}
@@ -78,7 +79,11 @@ export const NINE_GRID_SPLIT_PROMPT = {
 };
 
 export const NINE_GRID_IMAGE_PROMPT_TEMPLATE = {
-  prefix: `Create ONE cinematic storyboard image in a {gridLayout} grid ({panelCount} equal panels, thin white separators).
+  prefix: `Create ONE cinematic storyboard contact sheet.
+Fixed layout: exactly {layoutInstruction} ({panelCount} equal panels, thin white separators).
+Panel order: {layoutExample}
+{layoutSpecificConstraint}
+The grid geometry is non-negotiable. Every panel must have identical size; no panel may span multiple cells.
 All panels depict the SAME scene; vary camera angle and shot size only.
 Style: {visualStyle}
 Panels (left-to-right, top-to-bottom):`,
@@ -86,10 +91,14 @@ Panels (left-to-right, top-to-bottom):`,
   panelTemplate: `Panel {index} ({position}): [{shotSize} / {cameraAngle}] - {description}`,
 
   suffix: `Constraints:
-- Output one single {gridLayout} grid image only
+- Output one single storyboard grid image only
+- Exact layout = {layoutInstruction} and exactly {panelCount} panels total
 - Keep character identity consistent across all panels
 - Keep lighting/color/mood consistent across all panels
 - Each panel is a complete cinematic keyframe
+- All panel sizes must be identical; no merged cells, no oversized panels, no inset panels
+- Do NOT add extra rows, extra columns, blank panels, missing panels, or alternative layouts
+- {layoutSpecificConstraint}
 - ABSOLUTE NO-TEXT RULE: include zero readable text in every panel
 - Forbidden text elements: letters, words, numbers, subtitles, captions, logos, watermarks, signage, UI labels, speech bubbles
 - If signs/screens/documents appear, render text areas as blank or illegible marks with no recognizable characters`

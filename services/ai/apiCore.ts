@@ -22,6 +22,7 @@ import {
   getActiveAudioModel,
 } from '../modelRegistry';
 import { fetchMediaWithCorsFallback } from '../mediaFetchService';
+import { DEFAULT_CHAT_VERIFY_MODEL, normalizeChatModelId } from '../modelIdUtils';
 
 // ============================================
 // Script progress callback
@@ -73,8 +74,9 @@ const DEFAULT_API_BASE = 'https://api.antsk.cn';
 export const resolveModel = (type: 'chat' | 'image' | 'video' | 'audio', modelId?: string) => {
   if (modelId) {
     const normalizedModelId = modelId.toLowerCase();
+    const compatModelId = type === 'chat' ? (normalizeChatModelId(modelId) || modelId) : modelId;
     // Keep alias compatibility for model registry lookup.
-    const lookupId = normalizedModelId === 'veo_3_1-fast-4k' ? 'veo_3_1-fast' : modelId;
+    const lookupId = normalizedModelId === 'veo_3_1-fast-4k' ? 'veo_3_1-fast' : compatModelId;
     const model = getModelById(lookupId);
     if (model && model.type === type) return model;
 
@@ -92,8 +94,9 @@ export const resolveRequestModel = (type: 'chat' | 'image' | 'video' | 'audio', 
     return modelId;
   }
 
-  const resolved = resolveModel(type, modelId);
-  return resolved?.apiModel || resolved?.id || modelId || '';
+  const compatModelId = type === 'chat' ? normalizeChatModelId(modelId) : modelId;
+  const resolved = resolveModel(type, compatModelId);
+  return resolved?.apiModel || resolved?.id || compatModelId || '';
 };
 
 /**
@@ -243,13 +246,190 @@ export const retryOperation = async <T>(
   throw lastError;
 };
 
-/** Remove markdown code fences around JSON */
+const JSON_OUTPUT_GUARDRAILS = `
+
+STRICT JSON OUTPUT RULES:
+- Return exactly one valid JSON object or array, and nothing else.
+- Do not wrap the JSON in markdown code fences.
+- Do not output explanations, comments, <think> tags, or extra prose.
+- Use double quotes for every key and every string value.
+- Do not use trailing commas.
+`.trim();
+
+const stripThinkTags = (text: string): string =>
+  String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+const stripMarkdownJsonFences = (text: string): string => {
+  let cleaned = String(text || '').trim();
+  const fencedMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch) {
+    cleaned = fencedMatch[1];
+  } else {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
+    cleaned = cleaned.replace(/```\s*$/i, '');
+  }
+  return cleaned.trim();
+};
+
+const looksLikeJson = (text: string): boolean => {
+  const trimmed = String(text || '').trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+};
+
+const extractBalancedJsonBlock = (text: string): string | null => {
+  const input = String(text || '');
+  let startIndex = -1;
+  const stack: string[] = [];
+  let quoteChar: '"' | "'" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+
+    if (quoteChar) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === quoteChar) {
+        quoteChar = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quoteChar = char;
+      continue;
+    }
+
+    if (char === '{' || char === '[') {
+      if (stack.length === 0) {
+        startIndex = index;
+      }
+      stack.push(char);
+      continue;
+    }
+
+    if (char === '}' || char === ']') {
+      if (stack.length === 0) continue;
+      const expected = char === '}' ? '{' : '[';
+      if (stack[stack.length - 1] !== expected) continue;
+      stack.pop();
+      if (stack.length === 0 && startIndex >= 0) {
+        return input.slice(startIndex, index + 1).trim();
+      }
+    }
+  }
+
+  return null;
+};
+
+const repairCommonJsonIssues = (text: string): string => {
+  let fixed = stripMarkdownJsonFences(stripThinkTags(String(text || '')))
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+
+  fixed = fixed.replace(/\/\/.*?$/gm, '');
+  fixed = fixed.replace(/\/\*[\s\S]*?\*\//g, '');
+  fixed = fixed.replace(/([{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(\s*:)/g, '$1"$2"$3');
+  fixed = fixed.replace(/([{,]\s*)([A-Za-z_\u4e00-\u9fa5][A-Za-z0-9_\-\u4e00-\u9fa5]*)(\s*:)/g, '$1"$2"$3');
+  fixed = fixed.replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"');
+  fixed = fixed.replace(/,\s*([}\]])/g, '$1');
+
+  return fixed.trim();
+};
+
+const buildJsonParseCandidates = (raw: string): string[] => {
+  const cleaned = stripMarkdownJsonFences(stripThinkTags(raw));
+  const extracted = extractBalancedJsonBlock(cleaned) || extractBalancedJsonBlock(raw);
+  const candidates = [
+    cleaned,
+    extracted || '',
+    repairCommonJsonIssues(cleaned),
+    extracted ? repairCommonJsonIssues(extracted) : '',
+  ];
+
+  return candidates.filter((candidate, index) => {
+    const trimmed = candidate.trim();
+    return trimmed.length > 0 && candidates.findIndex(item => item.trim() === trimmed) === index;
+  });
+};
+
+const parseNestedJsonString = (value: unknown): unknown => {
+  let current = value;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (typeof current !== 'string') {
+      return current;
+    }
+    const next = repairCommonJsonIssues(current);
+    if (!looksLikeJson(next)) {
+      return current;
+    }
+    current = JSON.parse(next);
+  }
+  return current;
+};
+
+export const parseJsonWithRecovery = <T = any>(raw: string, defaultValue?: T): T => {
+  const candidates = buildJsonParseCandidates(raw);
+
+  for (const candidate of candidates) {
+    try {
+      return parseNestedJsonString(JSON.parse(candidate)) as T;
+    } catch {
+      // Continue trying more tolerant candidates.
+    }
+  }
+
+  if (defaultValue !== undefined) {
+    return defaultValue;
+  }
+
+  throw new Error('Failed to parse JSON response');
+};
+
+/** Remove markdown code fences around JSON and extract the JSON body when possible. */
 export const cleanJsonString = (str: string): string => {
   if (!str) return '{}';
-  let cleaned = str.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\s*/i, '');
-  cleaned = cleaned.replace(/```\s*$/, '');
-  return cleaned.trim();
+
+  const cleaned = stripMarkdownJsonFences(stripThinkTags(str));
+  const extracted = extractBalancedJsonBlock(cleaned);
+  return (extracted || cleaned).trim();
+};
+
+export const supportsNativeJsonObjectResponseFormat = (modelId: string): boolean => {
+  const model = String(modelId || '').toLowerCase();
+  return !(/claude|gemini/.test(model));
+};
+
+const isJsonResponseFormatUnsupportedError = (error: unknown): boolean => {
+  const message = String((error as any)?.message || error || '').toLowerCase();
+  return (
+    message.includes('response_format') ||
+    message.includes('json_object') ||
+    message.includes('unsupported') ||
+    message.includes('not support') ||
+    message.includes('invalid parameter') ||
+    message.includes('invalid param')
+  );
+};
+
+const withJsonOutputGuardrails = (prompt: string): string => {
+  const normalizedPrompt = String(prompt || '').trim();
+  if (normalizedPrompt.includes('STRICT JSON OUTPUT RULES')) {
+    return normalizedPrompt;
+  }
+  return `${normalizedPrompt}\n\n${JSON_OUTPUT_GUARDRAILS}`.trim();
 };
 
 /** Parse HTTP error payload to Error with status field */
@@ -290,10 +470,15 @@ export const chatCompletion = async (
 ): Promise<string> => {
   const apiKey = checkApiKey('chat', model);
   const requestModel = resolveRequestModel('chat', model);
+  const wantsJson = responseFormat === 'json_object';
+  const canUseNativeJsonObject = wantsJson && supportsNativeJsonObjectResponseFormat(requestModel);
+  const effectivePrompt = wantsJson && !canUseNativeJsonObject
+    ? withJsonOutputGuardrails(prompt)
+    : prompt;
 
   const requestBody: any = {
     model: requestModel,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content: effectivePrompt }],
     temperature,
   };
 
@@ -301,7 +486,7 @@ export const chatCompletion = async (
     requestBody.max_tokens = maxTokens;
   }
 
-  if (responseFormat === 'json_object') {
+  if (canUseNativeJsonObject) {
     requestBody.response_format = { type: 'json_object' };
   }
 
@@ -323,22 +508,43 @@ export const chatCompletion = async (
     const resolved = resolveModel('chat', model);
     const endpoint = resolved?.endpoint || '/v1/chat/completions';
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+    const executeRequest = async (body: any): Promise<Response> => {
+      const response = await fetch(`${apiBase}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw await parseHttpError(response);
+      if (!response.ok) {
+        throw await parseHttpError(response);
+      }
+
+      return response;
+    };
+
+    let response: Response;
+    try {
+      response = await executeRequest(requestBody);
+    } catch (error) {
+      if (wantsJson && canUseNativeJsonObject && isJsonResponseFormatUnsupportedError(error)) {
+        delete requestBody.response_format;
+        requestBody.messages = [{ role: 'user', content: withJsonOutputGuardrails(prompt) }];
+        response = await executeRequest(requestBody);
+      } else {
+        throw error;
+      }
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+    const content = data.choices?.[0]?.message?.content || '';
+    if (wantsJson) {
+      return cleanJsonString(content);
+    }
+    return content;
   } catch (error: any) {
     if (error.name === 'AbortError') {
       if (abortSignal?.aborted) {
@@ -367,15 +573,20 @@ export const chatCompletionStream = async (
 ): Promise<string> => {
   const apiKey = checkApiKey('chat', model);
   const requestModel = resolveRequestModel('chat', model);
+  const wantsJson = responseFormat === 'json_object';
+  const canUseNativeJsonObject = wantsJson && supportsNativeJsonObjectResponseFormat(requestModel);
+  const effectivePrompt = wantsJson && !canUseNativeJsonObject
+    ? withJsonOutputGuardrails(prompt)
+    : prompt;
 
   const requestBody: any = {
     model: requestModel,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [{ role: 'user', content: effectivePrompt }],
     temperature,
     stream: true,
   };
 
-  if (responseFormat === 'json_object') {
+  if (canUseNativeJsonObject) {
     requestBody.response_format = { type: 'json_object' };
   }
 
@@ -397,18 +608,35 @@ export const chatCompletionStream = async (
     const resolved = resolveModel('chat', model);
     const endpoint = resolved?.endpoint || '/v1/chat/completions';
 
-    const response = await fetch(`${apiBase}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+    const executeRequest = async (body: any): Promise<Response> => {
+      const response = await fetch(`${apiBase}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw await parseHttpError(response);
+      if (!response.ok) {
+        throw await parseHttpError(response);
+      }
+
+      return response;
+    };
+
+    let response: Response;
+    try {
+      response = await executeRequest(requestBody);
+    } catch (error) {
+      if (wantsJson && canUseNativeJsonObject && isJsonResponseFormatUnsupportedError(error)) {
+        delete requestBody.response_format;
+        requestBody.messages = [{ role: 'user', content: withJsonOutputGuardrails(prompt) }];
+        response = await executeRequest(requestBody);
+      } else {
+        throw error;
+      }
     }
 
     if (!response.body) {
@@ -439,6 +667,9 @@ export const chatCompletionStream = async (
 
             if (dataStr === '[DONE]') {
               clearTimeout(timeoutId);
+              if (wantsJson) {
+                return cleanJsonString(fullText);
+              }
               return fullText;
             }
 
@@ -460,6 +691,9 @@ export const chatCompletionStream = async (
     }
 
     clearTimeout(timeoutId);
+    if (wantsJson) {
+      return cleanJsonString(fullText);
+    }
     return fullText;
   } catch (error: any) {
     clearTimeout(timeoutId);
@@ -492,7 +726,7 @@ export const verifyApiKey = async (key: string): Promise<{ success: boolean; mes
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        model: 'gpt-41',
+        model: DEFAULT_CHAT_VERIFY_MODEL,
         messages: [{ role: 'user', content: 'Return 1 only.' }],
         temperature: 0.1,
         max_tokens: 5,

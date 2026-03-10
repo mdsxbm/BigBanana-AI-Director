@@ -1,7 +1,9 @@
 import { ProjectState, AssetLibraryItem, SeriesProject, Series, Episode } from '../types';
 import { runV2ToV3Migration, runEpisodeTitleFixMigration } from './migrationService';
 import { materializeProjectVideosForExport, migrateProjectVideosToOPFS } from './videoStorageService';
+import { reconcileShotSceneIds } from './storyboardIdUtils';
 import { sanitizePromptTemplateOverrides } from './promptTemplateService';
+import { normalizeChatModelId } from './modelIdUtils';
 
 const DB_NAME = 'BigBananaDB';
 const DB_VERSION = 3;
@@ -115,6 +117,7 @@ const normalizeEpisode = (ep: Episode): Episode => {
   return {
     ...ep,
     scriptData,
+    shots: reconcileShotSceneIds(ep.shots || [], scriptData?.scenes || []),
     renderLogs: ep.renderLogs || [],
     characterRefs: mergeByKey(ep.characterRefs, inferredCharacterRefs, r => r.characterId),
     sceneRefs: mergeByKey(ep.sceneRefs, inferredSceneRefs, r => r.sceneId),
@@ -643,7 +646,7 @@ export const importIndexedDBData = async (
           createdAt: p.createdAt || Date.now(), lastModified: p.lastModified || Date.now(),
           stage: p.stage || 'script', rawScript: p.rawScript || '', targetDuration: p.targetDuration || '60s',
           language: p.language || '中文', visualStyle: p.visualStyle || '3d-animation',
-          shotGenerationModel: p.shotGenerationModel || 'gpt-5.2',
+          shotGenerationModel: normalizeChatModelId(p.shotGenerationModel) || 'gpt-5.2',
           scriptData: p.scriptData
             ? {
                 ...p.scriptData,

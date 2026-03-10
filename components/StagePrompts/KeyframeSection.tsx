@@ -6,6 +6,7 @@ import { getDefaultVideoPrompt } from './utils';
 import CollapsibleSection from './CollapsibleSection';
 import PromptEditor from './PromptEditor';
 import StatusBadge from './StatusBadge';
+import { findSceneByIdCompat } from '../../services/storyboardIdUtils';
 
 interface Props {
   shots: Shot[];
@@ -45,7 +46,7 @@ const KeyframeSection: React.FC<Props> = ({
       onToggle={onToggle}
     >
       {shots.map((shot, shotIndex) => {
-        const scene = scriptData?.scenes.find(s => s.id === shot.sceneId);
+        const scene = findSceneByIdCompat(scriptData?.scenes, shot.sceneId);
         return (
           <div key={shot.id} className={STYLES.card.base}>
             <div className="mb-3">

@@ -38,6 +38,7 @@ import EditModal from './EditModal';
 import ShotCard from './ShotCard';
 import ShotWorkbench from './ShotWorkbench';
 import ImagePreviewModal from './ImagePreviewModal';
+import { findSceneByIdCompat } from '../../services/storyboardIdUtils';
 import NineGridPreview from './NineGridPreview';
 import { useAlert } from '../GlobalAlert';
 import { AspectRatioSelector } from '../AspectRatioSelector';
@@ -48,6 +49,7 @@ import { assessShotQuality, getProjectAverageQualityScore } from '../../services
 import { assessShotQualityWithLLM } from '../../services/qualityAssessmentV2Service';
 import { updatePromptWithVersion } from '../../services/promptVersionService';
 import { resolvePromptTemplateConfig } from '../../services/promptTemplateService';
+import { toFriendlyModerationMessage } from '../../services/errorMessageService';
 
 interface Props {
   project: ProjectState;
@@ -147,8 +149,11 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
 
     const status = error?.status;
     const rawMessage = typeof error?.message === 'string' ? error.message : '';
+    const moderationMessage = toFriendlyModerationMessage(rawMessage, {
+      includeUnknownReasonCode: import.meta.env.DEV,
+    });
 
-    let normalizedMessage = rawMessage;
+    let normalizedMessage = moderationMessage || rawMessage;
     if (!normalizedMessage) {
       if (status === 400) {
         normalizedMessage = '提示词可能被风控拦截，请修改提示词后重试。';
@@ -182,7 +187,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
       return parts.join(', ');
     }
 
-    const scene = scriptData.scenes.find(s => String(s.id) === String(shot.sceneId));
+    const scene = findSceneByIdCompat(scriptData.scenes, shot.sceneId);
     pushPrompt(
       shotHasCharacters
         ? stripHumanExclusionTerms(scene?.negativePrompt)
@@ -460,9 +465,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
     ).size;
     const effectiveReferenceCount = Math.min(5, dedupedReferenceCount);
     if (dedupedReferenceCount > 5) {
-      setToastMessage(
-        `参考图数量 ${dedupedReferenceCount} 超过模型上限，已自动限制为 5 张（含连贯性参考图）。`
-      );
+      const limitNote = continuityReferenceImage ? '（含连贯性参考图）' : '';
+      setToastMessage(`参考图数量 ${dedupedReferenceCount} 超过模型上限，已自动限制为 5 张${limitNote}。`);
     }
 
     const activeImageModel = getActiveImageModel() as any;
@@ -652,7 +656,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
     }
     if (isNineGridMode) {
       const panelCountForGuard = shot.nineGrid?.layout?.panelCount || shot.nineGrid?.panels?.length || 9;
-      videoPrompt = ensureNineGridVideoPromptGuardrails(videoPrompt, panelCountForGuard, projectLanguage);
+      videoPrompt = ensureNineGridVideoPromptGuardrails(videoPrompt, panelCountForGuard, projectLanguage, promptTemplates);
     }
 
     const videoPromptLength = Array.from(videoPrompt).length;
@@ -1057,7 +1061,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
         cameraMovement,
         aiInstruction,
         undefined,
-        targetDurationSeconds
+        targetDurationSeconds,
+        promptTemplates
       );
       
       // 更新编辑框的内容
@@ -1111,7 +1116,9 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
           atmosphere: scene.atmosphere
         },
         characterNames,
-        visualStyle
+        visualStyle,
+        undefined,
+        promptTemplates
       );
       
       // 更新关键帧的visualPrompt
@@ -1173,7 +1180,9 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
           atmosphere: scene.atmosphere
         },
         characterNames,
-        visualStyle
+        visualStyle,
+        undefined,
+        promptTemplates
       );
       
       // 同时更新起始帧和结束帧
@@ -1230,7 +1239,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
   /** 执行AI拆分镜头的实际逻辑 */
   const executeSplitShot = async (shot: Shot) => {
     // 1. 获取场景信息
-    const scene = project.scriptData?.scenes.find(s => String(s.id) === String(shot.sceneId));
+    const scene = findSceneByIdCompat(project.scriptData?.scenes, shot.sceneId);
     if (!scene) {
       showAlert('找不到场景信息', { type: 'warning' });
       return;
@@ -1261,7 +1270,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
         },
         characterNames,
         visualStyle,
-        shotGenerationModel
+        shotGenerationModel,
+        promptTemplates
       );
       
       // 4. 生成子镜头对象
@@ -1298,7 +1308,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
     const layout = resolveStoryboardGridLayout(panelCount ?? shot.nineGrid?.layout?.panelCount);
     
     // 1. 获取场景信息
-    const scene = project.scriptData?.scenes.find(s => String(s.id) === String(shot.sceneId));
+    const scene = findSceneByIdCompat(project.scriptData?.scenes, shot.sceneId);
     if (!scene) {
       showAlert('找不到场景信息', { type: 'warning' });
       return;
@@ -1526,7 +1536,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
     const model = project.shotGenerationModel || 'gpt-5.2';
     setIsNineGridTranslating(true);
     try {
-      const translations = await translateNineGridPanels(activeShot.nineGrid.panels, model);
+      const translations = await translateNineGridPanels(activeShot.nineGrid.panels, model, promptTemplates);
       const translationMap = new Map<number, string>(
         translations.map((item) => [item.index, item.descriptionZh])
       );
@@ -1587,7 +1597,8 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
               }
             : undefined,
         },
-        model
+        model,
+        promptTemplates
       );
 
       updateShot(activeShot.id, (s) => {
@@ -1939,7 +1950,7 @@ const StageDirector: React.FC<Props> = ({ project, updateProject, onApiKeyError,
               );
               if (editIsNineGridMode && promptValue) {
                 const panelCountForGuard = activeShot.nineGrid?.layout?.panelCount || activeShot.nineGrid?.panels?.length || 9;
-                promptValue = ensureNineGridVideoPromptGuardrails(promptValue, panelCountForGuard, editProjectLanguage);
+                promptValue = ensureNineGridVideoPromptGuardrails(promptValue, panelCountForGuard, editProjectLanguage, promptTemplates);
               }
               setEditModal({ 
                 type: 'video', 

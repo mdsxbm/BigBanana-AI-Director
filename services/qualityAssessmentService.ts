@@ -1,4 +1,5 @@
 import { ScriptData, Shot, ShotQualityAssessment, QualityCheck } from '../types';
+import { findSceneByIdCompat } from './storyboardIdUtils';
 
 const QUALITY_SCHEMA_VERSION = 1;
 
@@ -76,7 +77,7 @@ const evaluateAssetCoverage = (shot: Shot, scriptData?: ScriptData | null): Qual
     );
   }
 
-  const scene = scriptData.scenes.find((entry) => String(entry.id) === String(shot.sceneId));
+  const scene = findSceneByIdCompat(scriptData.scenes, shot.sceneId);
   const sceneScore = scene?.referenceImage ? 35 : 10;
 
   const charIds = shot.characters || [];

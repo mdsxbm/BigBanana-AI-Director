@@ -24,6 +24,8 @@ export interface PromptVersion {
 export interface StoryboardPromptTemplateConfig {
   shotGeneration: string;
   shotRepair: string;
+  actionSuggestion: string;
+  shotSplit: string;
 }
 
 /**
@@ -36,6 +38,9 @@ export interface KeyframePromptTemplateConfig {
   propWithImageGuide: string;
   propWithoutImageGuide: string;
   nineGridSourceMeta: string;
+  optimizeBoth: string;
+  optimizeSingle: string;
+  enhance: string;
 }
 
 /**
@@ -47,6 +52,9 @@ export interface NineGridPromptTemplateConfig {
   imagePrefix: string;
   imagePanelTemplate: string;
   imageSuffix: string;
+  imageNoTextConstraint: string;
+  translatePrompt: string;
+  rewritePrompt: string;
 }
 
 /**
@@ -59,6 +67,10 @@ export interface VideoPromptTemplateConfig {
   sora2NineGridEnglish: string;
   veoStartOnly: string;
   veoStartEnd: string;
+  nineGridGuardrailsChinese: string;
+  nineGridGuardrailsEnglish: string;
+  endFrameConstraintNote: string;
+  ignoredEndFrameNote: string;
 }
 
 /**
@@ -283,7 +295,7 @@ export interface Shot {
   keyframes: Keyframe[];
   interval?: VideoInterval;
   qualityAssessment?: ShotQualityAssessment;
-  videoModel?: 'veo' | 'sora-2' | 'veo_3_1-fast' | 'veo_3_1-fast-4K' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait' | 'doubao-seedance-1-5-pro-251215' | 'doubao-seedance-2-0-260128'; // Video generation model selection
+  videoModel?: 'veo' | 'sora-2' | 'veo_3_1-fast' | 'veo_3_1-fast-4K' | 'veo_3_1_t2v_fast_landscape' | 'veo_3_1_t2v_fast_portrait' | 'veo_3_1_i2v_s_fast_fl_landscape' | 'veo_3_1_i2v_s_fast_fl_portrait' | 'doubao-seedance-1-5-pro' | 'doubao-seedance-1-5-pro-251215' | 'doubao-seedance-2-0-260128'; // Video generation model selection
   videoInputMode?: 'keyframes' | 'storyboard-grid'; // 视频驱动方式：首尾帧 / 网格分镜（互斥）
   nineGrid?: NineGridData; // 可选的九宫格分镜预览数据（高级功能）
   dubbing?: ShotDubbing; // 镜头配音（旁白/对话）
@@ -353,7 +365,7 @@ export interface RenderLog {
   resourceId: string; // ID of the resource being generated
   resourceName: string; // Human-readable name
   status: 'success' | 'failed';
-  model: string; // Model used (e.g., 'imagen-3', 'veo_3_1_i2v_s_fast_fl_landscape', 'gpt-41')
+  model: string; // Model used (e.g., 'imagen-3', 'veo_3_1_i2v_s_fast_fl_landscape', 'gpt-5.4')
   prompt?: string; // The prompt used (optional, for debugging)
   error?: string; // Error message if failed
   inputTokens?: number; // Input tokens consumed
@@ -480,7 +492,7 @@ export interface ModelProvider {
  */
 export interface ChatModelConfig {
   providerId: string;
-  modelName: string;  // 如 'gpt-5.1', 'gpt-41', 'gpt-5.2'
+  modelName: string;  // 如 'gpt-5.1', 'gpt-5.2', 'gpt-5.4'
   endpoint?: string;  // API 端点，默认为 '/v1/chat/completions'
 }
 

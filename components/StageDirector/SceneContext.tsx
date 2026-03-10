@@ -59,7 +59,7 @@ const SceneContext: React.FC<SceneContextProps> = ({
             {onSceneChange && scenes.length > 1 ? (
               <div className="relative flex items-center">
                 <select
-                  value={shot.sceneId}
+                  value={scene?.id || shot.sceneId}
                   onChange={(e) => onSceneChange(e.target.value)}
                   className="w-full appearance-none bg-transparent text-[var(--text-primary)] text-sm font-bold pr-6 outline-none hover:text-[var(--accent)] transition-colors cursor-pointer truncate"
                   title={scene?.location}
